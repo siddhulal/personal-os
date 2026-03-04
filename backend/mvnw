@@ -1,0 +1,36 @@
+#!/bin/sh
+# Maven Wrapper script
+set -e
+
+MAVEN_WRAPPER_JAR=".mvn/wrapper/maven-wrapper.jar"
+MAVEN_WRAPPER_PROPERTIES=".mvn/wrapper/maven-wrapper.properties"
+
+# If wrapper jar doesn't exist, download it
+if [ ! -f "$MAVEN_WRAPPER_JAR" ]; then
+    WRAPPER_URL=$(grep "wrapperUrl" "$MAVEN_WRAPPER_PROPERTIES" | cut -d'=' -f2-)
+    mkdir -p .mvn/wrapper
+    if command -v curl > /dev/null 2>&1; then
+        curl -sL "$WRAPPER_URL" -o "$MAVEN_WRAPPER_JAR"
+    elif command -v wget > /dev/null 2>&1; then
+        wget -q "$WRAPPER_URL" -O "$MAVEN_WRAPPER_JAR"
+    fi
+fi
+
+# Get distribution URL
+DIST_URL=$(grep "distributionUrl" "$MAVEN_WRAPPER_PROPERTIES" | cut -d'=' -f2-)
+MAVEN_HOME="${HOME}/.m2/wrapper/dists/$(basename "$DIST_URL" .zip)"
+
+if [ ! -d "$MAVEN_HOME" ]; then
+    mkdir -p "$MAVEN_HOME"
+    TMP_FILE=$(mktemp)
+    if command -v curl > /dev/null 2>&1; then
+        curl -sL "$DIST_URL" -o "$TMP_FILE"
+    elif command -v wget > /dev/null 2>&1; then
+        wget -q "$DIST_URL" -O "$TMP_FILE"
+    fi
+    unzip -qo "$TMP_FILE" -d "$MAVEN_HOME"
+    rm -f "$TMP_FILE"
+fi
+
+MAVEN_BIN=$(find "$MAVEN_HOME" -name "mvn" -path "*/bin/mvn" | head -1)
+exec "$MAVEN_BIN" "$@"
