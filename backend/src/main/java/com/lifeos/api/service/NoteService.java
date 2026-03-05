@@ -82,8 +82,12 @@ public class NoteService {
     public NoteResponse updateNote(UUID id, NoteRequest request) {
         Note note = findNoteByIdAndUser(id);
         note.setTitle(request.getTitle());
-        note.setContent(request.getContent());
-        note.setContentJson(request.getContentJson());
+        if (request.getContent() != null) {
+            note.setContent(request.getContent());
+        }
+        if (request.getContentJson() != null) {
+            note.setContentJson(request.getContentJson());
+        }
 
         if (request.getOrderIndex() != null) {
             note.setOrderIndex(request.getOrderIndex());
@@ -93,7 +97,7 @@ public class NoteService {
             Project project = projectRepository.findById(request.getProjectId())
                 .orElseThrow(() -> new ResourceNotFoundException("Project", "id", request.getProjectId()));
             note.setProject(project);
-        } else {
+        } else if (Boolean.TRUE.equals(request.getClearProjectId())) {
             note.setProject(null);
         }
 
@@ -261,6 +265,109 @@ public class NoteService {
                 }
             }
         }
+    }
+
+    // ==================== Related Notes (3.5) ====================
+
+    public List<NoteResponse> getRelatedNotes(UUID noteId) {
+        Note note = findNoteByIdAndUser(noteId);
+        UUID userId = getCurrentUserId();
+        List<Note> allNotes = noteRepository.findByUserIdAndDeletedAtIsNull(userId,
+            org.springframework.data.domain.PageRequest.of(0, 500)).getContent();
+
+        String noteText = (note.getContent() != null ? note.getContent() : "") + " " + note.getTitle();
+        Set<String> noteWords = extractSignificantWords(noteText);
+        if (noteWords.isEmpty()) return List.of();
+
+        record ScoredNote(Note note, double score) {}
+        List<ScoredNote> scored = new ArrayList<>();
+
+        for (Note other : allNotes) {
+            if (other.getId().equals(noteId)) continue;
+            String otherText = (other.getContent() != null ? other.getContent() : "") + " " + other.getTitle();
+            Set<String> otherWords = extractSignificantWords(otherText);
+            if (otherWords.isEmpty()) continue;
+
+            // Jaccard-like overlap weighted by word count
+            Set<String> intersection = new HashSet<>(noteWords);
+            intersection.retainAll(otherWords);
+            if (intersection.isEmpty()) continue;
+
+            Set<String> union = new HashSet<>(noteWords);
+            union.addAll(otherWords);
+            double score = (double) intersection.size() / union.size();
+
+            // Boost for shared tags
+            if (note.getTags() != null && other.getTags() != null) {
+                Set<UUID> noteTags = note.getTags().stream().map(t -> t.getId()).collect(Collectors.toSet());
+                long sharedTags = other.getTags().stream().filter(t -> noteTags.contains(t.getId())).count();
+                score += sharedTags * 0.1;
+            }
+
+            scored.add(new ScoredNote(other, score));
+        }
+
+        return scored.stream()
+            .sorted((a, b) -> Double.compare(b.score, a.score))
+            .limit(5)
+            .map(s -> mapToResponse(s.note))
+            .collect(Collectors.toList());
+    }
+
+    private static final Set<String> STOP_WORDS = Set.of(
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could",
+        "should", "may", "might", "can", "shall", "to", "of", "in", "for",
+        "on", "with", "at", "by", "from", "as", "into", "through", "during",
+        "before", "after", "above", "below", "between", "out", "off", "over",
+        "under", "again", "further", "then", "once", "here", "there", "when",
+        "where", "why", "how", "all", "each", "every", "both", "few", "more",
+        "most", "other", "some", "such", "no", "nor", "not", "only", "own",
+        "same", "so", "than", "too", "very", "just", "because", "but", "and",
+        "or", "if", "while", "about", "up", "it", "its", "this", "that",
+        "i", "me", "my", "we", "our", "you", "your", "he", "him", "his",
+        "she", "her", "they", "them", "their", "what", "which", "who", "whom"
+    );
+
+    private Set<String> extractSignificantWords(String text) {
+        if (text == null || text.isBlank()) return Set.of();
+        return Arrays.stream(text.toLowerCase().replaceAll("[^a-z0-9\\s]", " ").split("\\s+"))
+            .filter(w -> w.length() > 2 && !STOP_WORDS.contains(w))
+            .collect(Collectors.toSet());
+    }
+
+    // ==================== Auto-Link Suggestions (3.1) ====================
+
+    public List<NoteSuggestionResponse> getAutoLinkSuggestions(UUID noteId) {
+        Note note = findNoteByIdAndUser(noteId);
+        UUID userId = getCurrentUserId();
+        String content = note.getContent() != null ? note.getContent().toLowerCase() : "";
+        if (content.isBlank()) return List.of();
+
+        // Get all notes except the current one
+        List<Note> allNotes = noteRepository.findByUserIdAndDeletedAtIsNull(userId,
+            org.springframework.data.domain.PageRequest.of(0, 500)).getContent();
+
+        // Get existing links from this note
+        List<NoteLink> existingLinks = noteLinkRepository.findBySourceNoteIdAndUserId(noteId, userId);
+        Set<UUID> linkedIds = existingLinks.stream()
+            .map(l -> l.getTargetNote().getId())
+            .collect(Collectors.toSet());
+
+        List<NoteSuggestionResponse> suggestions = new ArrayList<>();
+        for (Note other : allNotes) {
+            if (other.getId().equals(noteId)) continue;
+            if (linkedIds.contains(other.getId())) continue;
+            String title = other.getTitle().toLowerCase().trim();
+            if (title.length() < 3) continue;
+            if (content.contains(title)) {
+                suggestions.add(NoteSuggestionResponse.builder()
+                    .id(other.getId())
+                    .title(other.getTitle())
+                    .build());
+            }
+        }
+        return suggestions.stream().limit(10).collect(Collectors.toList());
     }
 
     // ==================== Private Helpers ====================

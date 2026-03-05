@@ -21,7 +21,7 @@ import java.util.List;
 public class Project extends BaseEntity {
 
     public enum Status {
-        ACTIVE, PAUSED, COMPLETED
+        PLANNING, ACTIVE, ON_HOLD, COMPLETED, ARCHIVED
     }
 
     @Column(nullable = false)

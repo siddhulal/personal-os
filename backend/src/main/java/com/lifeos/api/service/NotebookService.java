@@ -78,13 +78,34 @@ public class NotebookService {
     public void deleteNotebook(UUID id) {
         Notebook notebook = findNotebookByIdAndUser(id);
         notebook.softDelete();
-        // Soft delete sections too
+        // Soft delete sections and their notes too
         List<Section> sections = sectionRepository.findByNotebookIdAndDeletedAtIsNullOrderByOrderIndexAsc(id);
         for (Section section : sections) {
+            // Soft delete all notes in this section
+            List<Note> notes = noteRepository.findBySectionIdAndDeletedAtIsNullOrderByOrderIndexAsc(section.getId());
+            for (Note note : notes) {
+                note.softDelete();
+                noteRepository.save(note);
+            }
             section.softDelete();
             sectionRepository.save(section);
         }
         notebookRepository.save(notebook);
+    }
+
+    @Transactional
+    public NotebookResponse getOrCreateDefaultNotebook(String name) {
+        User user = getCurrentUser();
+        var existing = notebookRepository.findByUserIdAndNameAndDeletedAtIsNull(user.getId(), name);
+        if (existing.isPresent()) {
+            return mapToResponse(existing.get());
+        }
+        // Create new notebook with the given name
+        NotebookRequest request = new NotebookRequest();
+        request.setName(name);
+        request.setColor("#10b981");
+        request.setIcon("book-open");
+        return createNotebook(request);
     }
 
     private Notebook findNotebookByIdAndUser(UUID id) {

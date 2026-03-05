@@ -200,6 +200,8 @@ export interface LearningTopic {
   resources: string[];
   notes: string | null;
   roadmapId: string;
+  parentTopicId: string | null;
+  subtopics: LearningTopic[];
   createdAt: string;
   updatedAt: string;
 }
@@ -213,6 +215,7 @@ export interface LearningRoadmap {
   topics: LearningTopic[];
   totalTopics: number;
   completedTopics: number;
+  progressPercentage: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -309,6 +312,12 @@ export interface DashboardData {
     completedToday: number;
     todayTotal: number;
     bestStreak: number;
+  } | null;
+  digest: {
+    notesModifiedToday: number;
+    flashcardsDue: number;
+    recentNotes: string[];
+    summary: string;
   } | null;
 }
 
@@ -436,6 +445,42 @@ export interface AiChatMessage {
 export interface AiGenerateResponse {
   content: string;
   type: string;
+}
+
+// ============================================================
+// Flashcards
+// ============================================================
+
+export type FlashcardState = 0 | 1 | 2 | 3; // New, Learning, Review, Relearning
+export type FlashcardRating = 1 | 2 | 3 | 4; // Again, Hard, Good, Easy
+
+export interface Flashcard {
+  id: string;
+  front: string;
+  back: string;
+  deck: string;
+  noteId: string | null;
+  noteTitle: string | null;
+  stability: number;
+  difficulty: number;
+  reps: number;
+  lapses: number;
+  state: FlashcardState;
+  stateLabel: string;
+  lastReview: string | null;
+  nextReview: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FlashcardStats {
+  totalCards: number;
+  dueCards: number;
+  newCards: number;
+  learningCards: number;
+  reviewCards: number;
+  masteredCards: number;
+  decks: string[];
 }
 
 // ============================================================

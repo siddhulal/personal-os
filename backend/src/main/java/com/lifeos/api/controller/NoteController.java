@@ -105,4 +105,18 @@ public class NoteController {
     public ResponseEntity<List<NoteSuggestionResponse>> suggestNotes(@RequestParam("q") String query) {
         return ResponseEntity.ok(noteService.suggestNotes(query));
     }
+
+    // ==================== Related Notes (3.5) ====================
+
+    @GetMapping("/{id}/related")
+    public ResponseEntity<List<NoteResponse>> getRelatedNotes(@PathVariable UUID id) {
+        return ResponseEntity.ok(noteService.getRelatedNotes(id));
+    }
+
+    // ==================== Auto-Link Suggestions (3.1) ====================
+
+    @GetMapping("/{id}/auto-link-suggestions")
+    public ResponseEntity<List<NoteSuggestionResponse>> getAutoLinkSuggestions(@PathVariable UUID id) {
+        return ResponseEntity.ok(noteService.getAutoLinkSuggestions(id));
+    }
 }

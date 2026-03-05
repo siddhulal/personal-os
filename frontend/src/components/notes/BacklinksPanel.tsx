@@ -17,16 +17,16 @@ export function BacklinksPanel({ noteId, onNavigate }: BacklinksPanelProps) {
     enabled: !!noteId,
   });
 
-  if (backlinks.length === 0) return null;
+  if (backlinks.length === 0) {
+    return (
+      <div className="py-6 text-center text-xs text-muted-foreground">
+        No backlinks yet. Other notes that link to this one will appear here.
+      </div>
+    );
+  }
 
   return (
-    <div className="border-t bg-card/50 px-6 py-3">
-      <div className="flex items-center gap-2 mb-2">
-        <ArrowLeft className="h-3.5 w-3.5 text-muted-foreground" />
-        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Backlinks ({backlinks.length})
-        </h4>
-      </div>
+    <div className="px-4 py-3">
       <div className="flex flex-wrap gap-1.5">
         {backlinks.map((link) => (
           <button

@@ -6,10 +6,15 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NotebookSidebar } from "@/components/notes/NotebookSidebar";
 import { SectionPageList } from "@/components/notes/SectionPageList";
 import { TipTapEditor } from "@/components/notes/TipTapEditor";
 import { BacklinksPanel } from "@/components/notes/BacklinksPanel";
+import { TagPanel } from "@/components/notes/TagPanel";
+import { KnowledgeGraph } from "@/components/notes/KnowledgeGraph";
+import { RelatedNotesPanel } from "@/components/notes/RelatedNotesPanel";
+import { AutoLinkSuggestions } from "@/components/notes/AutoLinkSuggestions";
 import { useAutosave } from "@/lib/hooks/useAutosave";
 import {
   fetchNotebooks,
@@ -30,6 +35,12 @@ import {
   Maximize2,
   Minimize2,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Network,
+  Link2,
+  Book,
+  FileText,
 } from "lucide-react";
 import { CommandPalette } from "@/components/notes/CommandPalette";
 import { useTheme } from "next-themes";
@@ -70,6 +81,8 @@ export default function NotesPage() {
   const [showPages, setShowPages] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [graphOpen, setGraphOpen] = useState(false);
+  const [connectionsOpen, setConnectionsOpen] = useState(true);
 
   // Escape key exits fullscreen, Cmd+K opens command palette
   useEffect(() => {
@@ -239,7 +252,7 @@ export default function NotesPage() {
       {selectedPageId && selectedPage ? (
         <>
           {/* Editor header */}
-          <div className="border-b px-4 py-2 shrink-0 flex items-center justify-between gap-2">
+          <div className="border-b border-border/50 bg-card/30 px-4 py-2 shrink-0 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1 text-sm text-muted-foreground min-w-0 overflow-hidden">
               {!fullscreen && (
                 <>
@@ -248,16 +261,16 @@ export default function NotesPage() {
                   )}
                   {currentSection && (
                     <>
-                      <ChevronRight className="h-3 w-3 shrink-0" />
+                      <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
                       <span className="truncate">{currentSection.name}</span>
                     </>
                   )}
                   {(currentNotebook || currentSection) && (
-                    <ChevronRight className="h-3 w-3 shrink-0" />
+                    <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
                   )}
                 </>
               )}
-              <span className="font-medium text-foreground truncate">
+              <span className="text-2xl font-bold tracking-tight text-foreground truncate">
                 {editingTitle || "Untitled"}
               </span>
               {updatePageMutation.isPending && (
@@ -302,6 +315,15 @@ export default function NotesPage() {
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
+                onClick={() => setGraphOpen(true)}
+                title="Knowledge Graph"
+              >
+                <Network className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
                 onClick={() => setFullscreen(!fullscreen)}
                 title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
               >
@@ -324,6 +346,9 @@ export default function NotesPage() {
             />
           </div>
 
+          {/* Tags */}
+          <TagPanel note={selectedPage} />
+
           {/* Editor */}
           <div className="flex-1 overflow-y-auto">
             <TipTapEditor
@@ -334,7 +359,7 @@ export default function NotesPage() {
           </div>
 
           {/* Footer */}
-          <div className="border-t px-4 py-1.5 shrink-0 flex items-center justify-between text-xs text-muted-foreground">
+          <div className="border-t border-border/30 px-4 py-1.5 shrink-0 flex items-center justify-between text-xs text-muted-foreground/70">
             <span>
               {wordCount.words} words &middot; {wordCount.chars} characters
             </span>
@@ -343,11 +368,64 @@ export default function NotesPage() {
             </span>
           </div>
 
+          {/* Connections Panel (tabbed: Backlinks / Links / Related) */}
           {!fullscreen && (
-            <BacklinksPanel
-              noteId={selectedPageId}
-              onNavigate={handleNavigateToNote}
-            />
+            <div className="border-t border-border/50">
+              {/* Connections header with toggle */}
+              <button
+                className="w-full flex items-center gap-2 px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setConnectionsOpen(!connectionsOpen)}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                <span>Connections</span>
+                {connectionsOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5 ml-auto" />
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5 ml-auto" />
+                )}
+              </button>
+
+              {/* Collapsible content */}
+              <div
+                className={`grid transition-[grid-template-rows] duration-250 ease-in-out ${
+                  connectionsOpen ? "grid-rows-collapse-open" : "grid-rows-collapse-closed"
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <Tabs defaultValue="backlinks" className="px-2 pb-2">
+                    <TabsList className="h-8 w-full">
+                      <TabsTrigger value="backlinks" className="text-xs flex-1">
+                        Backlinks
+                      </TabsTrigger>
+                      <TabsTrigger value="links" className="text-xs flex-1">
+                        Links
+                      </TabsTrigger>
+                      <TabsTrigger value="related" className="text-xs flex-1">
+                        Related
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="backlinks" className="mt-1">
+                      <BacklinksPanel
+                        noteId={selectedPageId}
+                        onNavigate={handleNavigateToNote}
+                      />
+                    </TabsContent>
+                    <TabsContent value="links" className="mt-1">
+                      <AutoLinkSuggestions
+                        noteId={selectedPageId}
+                        onNavigate={handleNavigateToNote}
+                      />
+                    </TabsContent>
+                    <TabsContent value="related" className="mt-1">
+                      <RelatedNotesPanel
+                        noteId={selectedPageId}
+                        onNavigate={handleNavigateToNote}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              </div>
+            </div>
           )}
         </>
       ) : (
@@ -393,43 +471,79 @@ export default function NotesPage() {
     <AppShell noPadding>
       <div className="flex h-screen">
         {/* Column 1: Notebook Sidebar */}
-        <div
-          className="border-r bg-card/50 shrink-0 overflow-hidden transition-all duration-200"
-          style={{ width: showNotebooks ? "16rem" : "0" }}
-        >
-          <div className="w-64 h-full">
-            <NotebookSidebar
-              notebooks={notebooks}
-              selectedNotebookId={selectedNotebookId}
-              selectedSectionId={selectedSectionId}
-              onSelectSection={handleSelectSection}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              onOpenDailyNote={() => dailyNoteMutation.mutate()}
-            />
+        {showNotebooks ? (
+          <div
+            className="border-r bg-card/40 shrink-0 overflow-hidden transition-[width] duration-250 ease-in-out"
+            style={{ width: "16rem" }}
+          >
+            <div className="w-64 h-full">
+              <NotebookSidebar
+                notebooks={notebooks}
+                selectedNotebookId={selectedNotebookId}
+                selectedSectionId={selectedSectionId}
+                onSelectSection={handleSelectSection}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                onOpenDailyNote={() => dailyNoteMutation.mutate()}
+                onCollapse={() => setShowNotebooks(false)}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="shrink-0 w-8 border-r bg-card/40 flex flex-col items-center pt-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowNotebooks(true)}
+              title="Show notebooks"
+            >
+              <Book className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         {/* Column 2: Page List */}
-        <div
-          className="border-r shrink-0 overflow-hidden transition-all duration-200"
-          style={{ width: showPages ? "18rem" : "0" }}
-        >
-          <div className="w-72 h-full">
-            <SectionPageList
-              pages={displayPages}
-              selectedPageId={selectedPageId}
-              onSelectPage={handleSelectPage}
-              sectionId={selectedSectionId}
-              notebookId={selectedNotebookId}
-            />
+        {showPages ? (
+          <div
+            className="border-r bg-card/20 shrink-0 overflow-hidden transition-[width] duration-250 ease-in-out"
+            style={{ width: "18rem" }}
+          >
+            <div className="w-72 h-full">
+              <SectionPageList
+                pages={displayPages}
+                selectedPageId={selectedPageId}
+                onSelectPage={handleSelectPage}
+                sectionId={selectedSectionId}
+                notebookId={selectedNotebookId}
+                onCollapse={() => setShowPages(false)}
+              />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="shrink-0 w-8 border-r bg-card/20 flex flex-col items-center pt-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowPages(true)}
+              title="Show pages"
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
 
         {/* Column 3: Editor */}
         {editorPanel}
       </div>
       {commandPalette}
+      <KnowledgeGraph
+        open={graphOpen}
+        onOpenChange={setGraphOpen}
+        onNavigateToNote={handleNavigateToNote}
+        currentNoteId={selectedPageId}
+      />
     </AppShell>
   );
 }

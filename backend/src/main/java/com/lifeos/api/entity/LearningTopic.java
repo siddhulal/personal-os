@@ -21,7 +21,7 @@ import java.util.List;
 public class LearningTopic extends BaseEntity {
 
     public enum Status {
-        NOT_STARTED, IN_PROGRESS, COMPLETED
+        NOT_STARTED, IN_PROGRESS, COMPLETED, SKIPPED
     }
 
     @Column(nullable = false)

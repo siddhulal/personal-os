@@ -20,6 +20,7 @@ public class DashboardResponse {
     private LearningProgressDTO learningProgress;
     private InterviewProgressDTO interviewProgress;
     private HabitProgressDTO habitProgress;
+    private DigestDTO digest;
 
     @Data
     @Builder
@@ -30,5 +31,16 @@ public class DashboardResponse {
         private int completedToday;
         private int todayTotal;
         private int bestStreak;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DigestDTO {
+        private int notesModifiedToday;
+        private int flashcardsDue;
+        private List<String> recentNotes;
+        private String summary;
     }
 }

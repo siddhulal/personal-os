@@ -46,6 +46,11 @@ public class NotebookController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/default")
+    public ResponseEntity<NotebookResponse> getOrCreateDefaultNotebook(@RequestParam(defaultValue = "Learning Notes") String name) {
+        return ResponseEntity.ok(notebookService.getOrCreateDefaultNotebook(name));
+    }
+
     @GetMapping("/{id}/sections")
     public ResponseEntity<List<SectionResponse>> getSections(@PathVariable UUID id) {
         return ResponseEntity.ok(sectionService.getSectionsByNotebook(id));

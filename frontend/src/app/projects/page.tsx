@@ -53,6 +53,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Project, ProjectStatus, PageResponse } from "@/types";
 
 const STATUS_CONFIG: Record<
@@ -147,9 +148,8 @@ export default function ProjectsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formData, setFormData] = useState<ProjectFormData>(EMPTY_FORM);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(
-    null
-  );
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState<Project | null>(null);
 
   const pageSize = 20;
 
@@ -525,7 +525,7 @@ export default function ProjectsPage() {
                               className="text-destructive focus:text-destructive"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                deleteMutation.mutate(project.id);
+                                setConfirmDeleteProject(project);
                               }}
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
@@ -664,6 +664,20 @@ export default function ProjectsPage() {
             </div>
           </div>
         )}
+
+        <ConfirmDialog
+          open={!!confirmDeleteProject}
+          onOpenChange={(open) => { if (!open) setConfirmDeleteProject(null); }}
+          title="Delete Project"
+          description={`Are you sure you want to delete "${confirmDeleteProject?.name}"? This action cannot be undone.`}
+          onConfirm={() => {
+            if (confirmDeleteProject) {
+              deleteMutation.mutate(confirmDeleteProject.id);
+              setConfirmDeleteProject(null);
+            }
+          }}
+          loading={deleteMutation.isPending}
+        />
       </div>
     </AppShell>
   );

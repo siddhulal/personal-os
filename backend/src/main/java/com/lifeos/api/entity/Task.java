@@ -22,11 +22,11 @@ import java.util.Set;
 public class Task extends BaseEntity {
 
     public enum Status {
-        TODO, IN_PROGRESS, DONE
+        TODO, IN_PROGRESS, DONE, ARCHIVED
     }
 
     public enum Priority {
-        LOW, MEDIUM, HIGH
+        LOW, MEDIUM, HIGH, URGENT
     }
 
     @Column(nullable = false)

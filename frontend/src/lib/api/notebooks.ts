@@ -34,6 +34,12 @@ export async function deleteNotebook(id: string): Promise<void> {
   await api.delete(`/api/notebooks/${id}`);
 }
 
+// Default/named notebook (get or create)
+export async function getOrCreateDefaultNotebook(name: string = "Learning Notes"): Promise<Notebook> {
+  const response = await api.post(`/api/notebooks/default?name=${encodeURIComponent(name)}`);
+  return response.data;
+}
+
 // Sections
 export async function fetchSections(notebookId: string): Promise<Section[]> {
   const response = await api.get(`/api/notebooks/${notebookId}/sections`);
@@ -88,11 +94,12 @@ export async function createPage(data: {
 export async function updatePage(
   id: string,
   data: {
-    title: string;
+    title?: string;
     content?: string;
     contentJson?: string;
     notebookId?: string;
     sectionId?: string;
+    orderIndex?: number;
   }
 ): Promise<Note> {
   const response = await api.put(`/api/notes/${id}`, data);
@@ -143,5 +150,17 @@ export async function fetchNoteGraph(): Promise<NoteGraph> {
 // Note Suggestions (for wiki link autocomplete)
 export async function suggestNotes(query: string): Promise<NoteSuggestion[]> {
   const response = await api.get(`/api/notes/suggest?q=${encodeURIComponent(query)}`);
+  return response.data;
+}
+
+// Related Notes
+export async function fetchRelatedNotes(noteId: string): Promise<Note[]> {
+  const response = await api.get(`/api/notes/${noteId}/related`);
+  return response.data;
+}
+
+// Auto-Link Suggestions
+export async function fetchAutoLinkSuggestions(noteId: string): Promise<NoteSuggestion[]> {
+  const response = await api.get(`/api/notes/${noteId}/auto-link-suggestions`);
   return response.data;
 }

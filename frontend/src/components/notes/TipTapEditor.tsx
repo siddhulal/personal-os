@@ -7,8 +7,8 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { common, createLowlight } from "lowlight";
+import { createMermaidCodeBlock } from "./MermaidCodeBlock";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   PenLine,
@@ -92,9 +92,7 @@ export function TipTapEditor({
         heading: { levels: [1, 2, 3] },
         codeBlock: false, // Replaced by CodeBlockLowlight
       }),
-      CodeBlockLowlight.configure({
-        lowlight,
-      }),
+      createMermaidCodeBlock(lowlight),
       Link.configure({
         openOnClick: false,
         HTMLAttributes: { class: "text-primary underline cursor-pointer" },
@@ -205,10 +203,137 @@ export function TipTapEditor({
   );
 }
 
+/**
+ * Expand a one-liner mermaid string into proper multi-line syntax.
+ * Handles: semicolons as line separators, style/classDef/linkStyle directives,
+ * and graph type declarations that need their own line.
+ */
+function expandMermaidOneLiner(code: string): string {
+  let result = code;
+  // Expand semicolons to newlines
+  if (!result.includes("\n") && result.includes(";")) {
+    result = result.replace(/;\s*/g, "\n");
+  }
+  // Ensure graph/flowchart declaration is on its own line
+  result = result.replace(/^((?:graph|flowchart)\s+(?:TD|TB|BT|RL|LR))\s+/, "$1\n");
+  // Put style / classDef / linkStyle / class directives on their own lines
+  result = result.replace(/\s+(style\s)/g, "\n$1");
+  result = result.replace(/\s+(classDef\s)/g, "\n$1");
+  result = result.replace(/\s+(linkStyle\s)/g, "\n$1");
+  result = result.replace(/\s+(class\s)/g, "\n$1");
+  return result.trim();
+}
+
+/**
+ * Convert markdown code fences (```lang ... ```) into HTML <pre><code> blocks
+ * so TipTap creates proper codeBlock nodes instead of plain-text paragraphs.
+ */
+function markdownFencesToHtml(text: string): string {
+  const parts: string[] = [];
+  let lastIdx = 0;
+  const fenceRe = /```(\w*)\s*([\s\S]*?)```/g;
+  let match;
+  while ((match = fenceRe.exec(text)) !== null) {
+    const before = text.slice(lastIdx, match.index).trim();
+    if (before) {
+      parts.push(
+        before
+          .split(/\n/)
+          .map((line) => `<p>${line}</p>`)
+          .join("")
+      );
+    }
+    const lang = match[1] || "";
+    let code = match[2].trim();
+    if (lang === "mermaid") {
+      code = expandMermaidOneLiner(code);
+    }
+    const escaped = code
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    parts.push(
+      `<pre><code class="language-${lang}">${escaped}</code></pre>`
+    );
+    lastIdx = match.index + match[0].length;
+  }
+  const remaining = text.slice(lastIdx).trim();
+  if (remaining) {
+    parts.push(
+      remaining
+        .split(/\n/)
+        .map((line) => `<p>${line}</p>`)
+        .join("")
+    );
+  }
+  return parts.join("");
+}
+
+/**
+ * Walk TipTap JSON and convert paragraph nodes containing markdown code fences
+ * into proper codeBlock nodes.
+ */
+function transformJsonContent(doc: Record<string, unknown>): Record<string, unknown> {
+  if (!doc || typeof doc !== "object" || !Array.isArray((doc as { content?: unknown[] }).content)) return doc;
+  const content = (doc as { content: Array<Record<string, unknown>> }).content;
+  const newContent: Record<string, unknown>[] = [];
+
+  for (const node of content) {
+    if (node.type === "paragraph" && Array.isArray(node.content)) {
+      // Extract full text of the paragraph
+      const text = (node.content as Array<{ text?: string }>)
+        .map((c) => c.text || "")
+        .join("");
+      if (text.includes("```")) {
+        const fenceRe = /```(\w*)\s*([\s\S]*?)```/g;
+        let match;
+        let lastIdx = 0;
+        while ((match = fenceRe.exec(text)) !== null) {
+          const before = text.slice(lastIdx, match.index).trim();
+          if (before) {
+            newContent.push({
+              type: "paragraph",
+              content: [{ type: "text", text: before }],
+            });
+          }
+          const lang = match[1] || "";
+          let code = match[2].trim();
+          if (lang === "mermaid") {
+            code = expandMermaidOneLiner(code);
+          }
+          newContent.push({
+            type: "codeBlock",
+            attrs: { language: lang },
+            content: [{ type: "text", text: code }],
+          });
+          lastIdx = match.index + match[0].length;
+        }
+        const remaining = text.slice(lastIdx).trim();
+        if (remaining) {
+          newContent.push({
+            type: "paragraph",
+            content: [{ type: "text", text: remaining }],
+          });
+        }
+        continue;
+      }
+    }
+    newContent.push(node);
+  }
+
+  return { ...doc, content: newContent };
+}
+
 function tryParseJson(content: string): Content {
   try {
-    return JSON.parse(content);
+    const parsed = JSON.parse(content);
+    // Transform JSON content to fix embedded code fences in paragraphs
+    return transformJsonContent(parsed) as Content;
   } catch {
+    // Not JSON — treat as markdown/plain text
+    if (content.includes("```")) {
+      return markdownFencesToHtml(content);
+    }
     return content;
   }
 }

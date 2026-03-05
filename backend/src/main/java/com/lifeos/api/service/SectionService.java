@@ -65,6 +65,12 @@ public class SectionService {
     @Transactional
     public void deleteSection(UUID id) {
         Section section = findSectionByIdAndUser(id);
+        // Soft delete all notes in this section
+        List<Note> notes = noteRepository.findBySectionIdAndDeletedAtIsNullOrderByOrderIndexAsc(section.getId());
+        for (Note note : notes) {
+            note.softDelete();
+            noteRepository.save(note);
+        }
         section.softDelete();
         sectionRepository.save(section);
     }

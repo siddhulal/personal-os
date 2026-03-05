@@ -24,6 +24,8 @@ public class NoteRequest {
 
     private UUID projectId;
 
+    private Boolean clearProjectId;
+
     private UUID notebookId;
 
     private UUID sectionId;

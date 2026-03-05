@@ -17,7 +17,11 @@ import {
   MessageSquare,
   Repeat,
   Flame,
+  Sparkles,
+  Layers,
+  FileText,
 } from "lucide-react";
+import Link from "next/link";
 import { DashboardData } from "@/types";
 
 export default function DashboardPage() {
@@ -51,6 +55,50 @@ export default function DashboardPage() {
         {isLoading ? (
           <DashboardSkeleton />
         ) : dashboard ? (
+          <>
+          {/* Daily Digest */}
+          {dashboard.digest && (
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Daily Digest
+                </CardTitle>
+                <span className="text-xs text-muted-foreground">
+                  {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                </span>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm">{dashboard.digest.summary}</p>
+                <div className="flex flex-wrap gap-3">
+                  {dashboard.digest.flashcardsDue > 0 && (
+                    <Link
+                      href="/flashcards"
+                      className="inline-flex items-center gap-1.5 text-xs bg-background/80 px-3 py-1.5 rounded-full border hover:bg-background transition-colors"
+                    >
+                      <Layers className="h-3 w-3 text-orange-500" />
+                      {dashboard.digest.flashcardsDue} cards to review
+                    </Link>
+                  )}
+                  {dashboard.digest.notesModifiedToday > 0 && (
+                    <Link
+                      href="/notes"
+                      className="inline-flex items-center gap-1.5 text-xs bg-background/80 px-3 py-1.5 rounded-full border hover:bg-background transition-colors"
+                    >
+                      <FileText className="h-3 w-3 text-blue-500" />
+                      {dashboard.digest.notesModifiedToday} notes edited today
+                    </Link>
+                  )}
+                </div>
+                {dashboard.digest.recentNotes.length > 0 && (
+                  <div className="text-xs text-muted-foreground">
+                    Recent: {dashboard.digest.recentNotes.join(", ")}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Today's Tasks */}
             <Card>
@@ -310,6 +358,7 @@ export default function DashboardPage() {
               </Card>
             )}
           </div>
+          </>
         ) : null}
       </div>
     </AppShell>

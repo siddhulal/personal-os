@@ -46,6 +46,7 @@ import {
   FolderKanban,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Task, TaskStatus, TaskPriority, PageResponse } from "@/types";
 
 const PRIORITY_CONFIG: Record<TaskPriority, { label: string; className: string }> = {
@@ -122,6 +123,7 @@ export default function TasksPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formData, setFormData] = useState<TaskFormData>(EMPTY_FORM);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [confirmDeleteTask, setConfirmDeleteTask] = useState<Task | null>(null);
 
   const pageSize = 20;
 
@@ -604,7 +606,7 @@ export default function TasksPage() {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
-                        onClick={() => deleteMutation.mutate(task.id)}
+                        onClick={() => setConfirmDeleteTask(task)}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
                         Delete
@@ -645,6 +647,20 @@ export default function TasksPage() {
             </div>
           </div>
         )}
+
+        <ConfirmDialog
+          open={!!confirmDeleteTask}
+          onOpenChange={(open) => { if (!open) setConfirmDeleteTask(null); }}
+          title="Delete Task"
+          description={`Are you sure you want to delete "${confirmDeleteTask?.title}"? This action cannot be undone.`}
+          onConfirm={() => {
+            if (confirmDeleteTask) {
+              deleteMutation.mutate(confirmDeleteTask.id);
+              setConfirmDeleteTask(null);
+            }
+          }}
+          loading={deleteMutation.isPending}
+        />
       </div>
     </AppShell>
   );

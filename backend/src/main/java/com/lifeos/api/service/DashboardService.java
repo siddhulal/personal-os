@@ -28,6 +28,8 @@ public class DashboardService {
     private final PracticeRecordRepository practiceRecordRepository;
     private final HabitRepository habitRepository;
     private final HabitCompletionRepository habitCompletionRepository;
+    private final NoteRepository noteRepository;
+    private final FlashcardRepository flashcardRepository;
 
     public DashboardResponse getDashboard() {
         UUID userId = getCurrentUserId();
@@ -105,6 +107,48 @@ public class DashboardService {
             .bestStreak(bestStreak)
             .build();
 
+        // Daily digest
+        LocalDateTime todayStart = today.atStartOfDay();
+        var recentlyModifiedNotes = noteRepository.findByUserIdAndDeletedAtIsNull(userId,
+            PageRequest.of(0, 100, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "updatedAt")));
+        List<String> recentNoteTitles = recentlyModifiedNotes.getContent().stream()
+            .filter(n -> n.getUpdatedAt() != null && n.getUpdatedAt().isAfter(todayStart))
+            .limit(5)
+            .map(n -> n.getTitle())
+            .collect(Collectors.toList());
+        int notesModifiedToday = (int) recentlyModifiedNotes.getContent().stream()
+            .filter(n -> n.getUpdatedAt() != null && n.getUpdatedAt().isAfter(todayStart))
+            .count();
+        int flashcardsDue = flashcardRepository.countDueCards(userId, LocalDateTime.now());
+
+        // Build summary
+        StringBuilder summary = new StringBuilder();
+        if (!overdueTasks.isEmpty()) {
+            summary.append(overdueTasks.size()).append(" overdue task").append(overdueTasks.size() > 1 ? "s" : "").append(". ");
+        }
+        if (!todayTasks.isEmpty()) {
+            summary.append(todayTasks.size()).append(" task").append(todayTasks.size() > 1 ? "s" : "").append(" due today. ");
+        }
+        if (flashcardsDue > 0) {
+            summary.append(flashcardsDue).append(" flashcard").append(flashcardsDue > 1 ? "s" : "").append(" to review. ");
+        }
+        if (notesModifiedToday > 0) {
+            summary.append("You worked on ").append(notesModifiedToday).append(" note").append(notesModifiedToday > 1 ? "s" : "").append(" today. ");
+        }
+        if (habitProgress.getCompletedToday() > 0) {
+            summary.append(habitProgress.getCompletedToday()).append("/").append(habitProgress.getTodayTotal()).append(" habits done. ");
+        }
+        if (summary.length() == 0) {
+            summary.append("All caught up! No urgent items.");
+        }
+
+        DashboardResponse.DigestDTO digest = DashboardResponse.DigestDTO.builder()
+            .notesModifiedToday(notesModifiedToday)
+            .flashcardsDue(flashcardsDue)
+            .recentNotes(recentNoteTitles)
+            .summary(summary.toString().trim())
+            .build();
+
         return DashboardResponse.builder()
             .todayTasks(todayTasks.stream().map(this::mapTaskResponse).collect(Collectors.toList()))
             .overdueTasks(overdueTasks.stream().map(this::mapTaskResponse).collect(Collectors.toList()))
@@ -113,6 +157,7 @@ public class DashboardService {
             .learningProgress(learningProgress)
             .interviewProgress(interviewProgress)
             .habitProgress(habitProgress)
+            .digest(digest)
             .build();
     }
 
