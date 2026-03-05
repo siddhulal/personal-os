@@ -1,20 +1,51 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ZoomIn, ZoomOut, RotateCcw, Download } from "lucide-react";
 
 interface MermaidDiagramProps {
   chart: string;
+}
+
+// Sanitize Mermaid chart text to fix common AI-generated syntax issues
+function sanitizeChart(raw: string): string {
+  return raw
+    .split("\n")
+    .map((line) => {
+      // Fix parentheses inside square bracket labels: [Text (thing)] → ["Text (thing)"]
+      // and inside round bracket labels: (Text (thing)) → ("Text (thing)")
+      // and inside curly bracket labels: {Text (thing)} → {"Text (thing)"}
+      return line.replace(
+        /(\w+)\s*([\[({])(.*?)([\])}])\s*(;?)$/,
+        (_match, id, open, content, close, semi) => {
+          if (
+            (open === "(" && content.includes("(")) ||
+            (open === "[" && content.includes("[")) ||
+            (open === "{" && content.includes("{")) ||
+            content.includes('"')
+          ) {
+            const escaped = content.replace(/"/g, "'");
+            return `${id}${open}"${escaped}"${close}${semi}`;
+          }
+          return _match;
+        }
+      );
+    })
+    .join("\n");
 }
 
 export function MermaidDiagram({ chart }: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
 
     async function renderChart() {
+      const sanitized = sanitizeChart(chart);
+
       try {
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
@@ -24,15 +55,26 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
         });
 
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const { svg: renderedSvg } = await mermaid.render(id, chart);
+        const { svg: renderedSvg } = await mermaid.render(id, sanitized);
         if (!cancelled) {
           setSvg(renderedSvg);
           setError("");
         }
-      } catch (err) {
-        if (!cancelled) {
-          setError("Failed to render diagram");
-          console.error("Mermaid render error:", err);
+      } catch {
+        // Retry with original if sanitization caused issues
+        try {
+          const mermaid = (await import("mermaid")).default;
+          const id = `mermaid-retry-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const { svg: renderedSvg } = await mermaid.render(id, chart);
+          if (!cancelled) {
+            setSvg(renderedSvg);
+            setError("");
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setError("Failed to render diagram");
+            console.error("Mermaid render error:", err);
+          }
         }
       }
     }
@@ -40,6 +82,33 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
     renderChart();
     return () => { cancelled = true; };
   }, [chart]);
+
+  function handleDownloadPng() {
+    if (!containerRef.current) return;
+    const svgEl = containerRef.current.querySelector("svg");
+    if (!svgEl) return;
+
+    const svgData = new XMLSerializer().serializeToString(svgEl);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2; // Higher res export
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      const a = document.createElement("a");
+      a.download = "diagram.png";
+      a.href = canvas.toDataURL("image/png");
+      a.click();
+    };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
+  }
 
   if (error) {
     return (
@@ -58,11 +127,56 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
     );
   }
 
+  const btnClass =
+    "h-7 w-7 flex items-center justify-center rounded bg-muted hover:bg-muted/80 transition-colors text-muted-foreground";
+
   return (
-    <div
-      ref={containerRef}
-      className="overflow-x-auto bg-white dark:bg-gray-900 rounded p-2"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <div className="space-y-2">
+      <div className="flex items-center gap-1 justify-end">
+        <button
+          type="button"
+          className={btnClass}
+          onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}
+          title="Zoom out"
+        >
+          <ZoomOut className="h-3.5 w-3.5" />
+        </button>
+        <span className="text-xs text-muted-foreground w-12 text-center">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          type="button"
+          className={btnClass}
+          onClick={() => setZoom((z) => Math.min(3, z + 0.25))}
+          title="Zoom in"
+        >
+          <ZoomIn className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className={btnClass}
+          onClick={() => setZoom(1)}
+          title="Reset zoom"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className={btnClass}
+          onClick={handleDownloadPng}
+          title="Download as PNG"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="overflow-auto bg-white dark:bg-gray-900 rounded border border-border p-4 max-h-[60vh]">
+        <div
+          ref={containerRef}
+          className="[&_svg]:mx-auto transition-transform origin-top-left"
+          style={{ transform: `scale(${zoom})` }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      </div>
+    </div>
   );
 }

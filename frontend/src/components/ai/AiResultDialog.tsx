@@ -32,6 +32,7 @@ export function AiResultDialog({
   actions,
 }: AiResultDialogProps) {
   const [copied, setCopied] = useState(false);
+  const hasDiagram = content.includes("```mermaid");
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -41,7 +42,7 @@ export function AiResultDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className={`${hasDiagram ? "max-w-5xl" : "max-w-2xl"} max-h-[90vh] overflow-y-auto`}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

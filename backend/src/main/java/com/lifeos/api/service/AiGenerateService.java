@@ -66,6 +66,12 @@ public class AiGenerateService {
                 "Generate a Mermaid diagram (%s) for the topic '%s'. " +
                 "The diagram should visually represent the key concepts, relationships, or processes involved. " +
                 "Topic description: %s\n\n" +
+                "IMPORTANT Mermaid syntax rules:\n" +
+                "- Use ONLY square brackets for node labels: A[Label Text]\n" +
+                "- If a label contains parentheses, wrap it in quotes: A[\"Text (example)\"]\n" +
+                "- Do NOT use semicolons at end of lines\n" +
+                "- Do NOT use special characters like &, <, > in labels without quotes\n" +
+                "- Keep node IDs short (A, B, C or A1, A2, etc.)\n\n" +
                 "Return ONLY the Mermaid diagram code wrapped in a ```mermaid code block. " +
                 "Make the diagram comprehensive but readable. Use descriptive labels.",
                 type,

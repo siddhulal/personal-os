@@ -48,6 +48,7 @@ import {
 
 import api from "@/lib/api";
 import { generateExamples, generateDiagram } from "@/lib/api/ai";
+import { createPage } from "@/lib/api/notebooks";
 import { AiResultDialog } from "@/components/ai/AiResultDialog";
 import type { LearningRoadmap, LearningTopic, TopicStatus } from "@/types";
 
@@ -740,6 +741,28 @@ export default function RoadmapDetailPage() {
           title={aiResultTitle}
           content={aiResultContent}
           isLoading={aiLoading}
+          actions={[
+            {
+              label: "Save to Notes",
+              onClick: async () => {
+                try {
+                  await createPage({
+                    title: aiResultTitle,
+                    content: aiResultContent,
+                  });
+                  setAiResultOpen(false);
+                  toast.success("Saved to Notes", {
+                    action: {
+                      label: "Open Notes",
+                      onClick: () => router.push("/notes"),
+                    },
+                  });
+                } catch {
+                  toast.error("Failed to save to Notes");
+                }
+              },
+            },
+          ]}
         />
       </div>
     </AppShell>
