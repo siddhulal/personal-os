@@ -34,7 +34,9 @@ export default function LoginPage() {
     setError("");
     try {
       await login(data.email, data.password);
-      router.push("/dashboard");
+      const returnTo = sessionStorage.getItem("returnTo");
+      sessionStorage.removeItem("returnTo");
+      router.push(returnTo || "/dashboard");
     } catch (err: any) {
       setError(err.response?.data?.message || "Invalid email or password");
     } finally {

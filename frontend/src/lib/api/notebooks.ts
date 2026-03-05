@@ -121,6 +121,10 @@ export async function createNoteLink(sourceId: string, targetNoteId: string): Pr
   return response.data;
 }
 
+export async function syncNoteLinks(sourceId: string, targetIds: string[]): Promise<void> {
+  await api.put(`/api/notes/${sourceId}/links/sync`, targetIds);
+}
+
 export async function deleteNoteLink(sourceId: string, targetId: string): Promise<void> {
   await api.delete(`/api/notes/${sourceId}/links/${targetId}`);
 }

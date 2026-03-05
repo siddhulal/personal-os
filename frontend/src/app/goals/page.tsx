@@ -34,6 +34,7 @@ interface GoalFormData {
   status: GoalStatus;
   timeframe: GoalTimeframe;
   targetDate: string;
+  progress: number;
 }
 
 const emptyFormData: GoalFormData = {
@@ -42,6 +43,7 @@ const emptyFormData: GoalFormData = {
   status: "NOT_STARTED",
   timeframe: "MONTHLY",
   targetDate: "",
+  progress: 0,
 };
 
 const statusOptions: { value: GoalStatus; label: string }[] = [
@@ -114,6 +116,7 @@ export default function GoalsPage() {
         status: data.status,
         timeframe: data.timeframe,
         targetDate: data.targetDate || null,
+        progress: data.progress,
       };
       const response = await api.post("/api/goals", payload);
       return response.data;
@@ -136,6 +139,7 @@ export default function GoalsPage() {
         status: data.status,
         timeframe: data.timeframe,
         targetDate: data.targetDate || null,
+        progress: data.progress,
       };
       const response = await api.put(`/api/goals/${id}`, payload);
       return response.data;
@@ -203,6 +207,7 @@ export default function GoalsPage() {
       status: goal.status,
       timeframe: goal.timeframe,
       targetDate: goal.targetDate || "",
+      progress: goal.progress ?? 0,
     });
   }
 
@@ -501,6 +506,23 @@ export default function GoalsPage() {
                     }
                   />
                 </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="create-goal-progress">
+                    Progress: {formData.progress}%
+                  </Label>
+                  <input
+                    id="create-goal-progress"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={formData.progress}
+                    onChange={(e) =>
+                      setFormData({ ...formData, progress: Number(e.target.value) })
+                    }
+                    className="w-full accent-primary"
+                  />
+                </div>
               </div>
               <DialogFooter>
                 <Button
@@ -610,6 +632,23 @@ export default function GoalsPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, targetDate: e.target.value })
                     }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-goal-progress">
+                    Progress: {formData.progress}%
+                  </Label>
+                  <input
+                    id="edit-goal-progress"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={formData.progress}
+                    onChange={(e) =>
+                      setFormData({ ...formData, progress: Number(e.target.value) })
+                    }
+                    className="w-full accent-primary"
                   />
                 </div>
               </div>

@@ -11,6 +11,9 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
+  Sparkles,
+  GitBranch,
+  Loader2,
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -44,6 +47,8 @@ import {
 } from "@/components/ui/select";
 
 import api from "@/lib/api";
+import { generateExamples, generateDiagram } from "@/lib/api/ai";
+import { AiResultDialog } from "@/components/ai/AiResultDialog";
 import type { LearningRoadmap, LearningTopic, TopicStatus } from "@/types";
 
 const TOPIC_STATUS_CONFIG: Record<
@@ -92,6 +97,14 @@ export default function RoadmapDetailPage() {
 
   // Expanded notes state
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+
+  // AI state
+  const [aiResultOpen, setAiResultOpen] = useState(false);
+  const [aiResultTitle, setAiResultTitle] = useState("");
+  const [aiResultContent, setAiResultContent] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiLoadingTopicId, setAiLoadingTopicId] = useState<string | null>(null);
+  const [aiLoadingType, setAiLoadingType] = useState<string | null>(null);
 
   // Fetch roadmap
   const {
@@ -290,6 +303,44 @@ export default function RoadmapDetailPage() {
     return [...topics].sort((a, b) => a.orderIndex - b.orderIndex);
   }
 
+  async function handleGenerateExamples(topic: LearningTopic) {
+    setAiLoading(true);
+    setAiLoadingTopicId(topic.id);
+    setAiLoadingType("examples");
+    setAiResultTitle(`Code Examples: ${topic.title}`);
+    setAiResultContent("");
+    setAiResultOpen(true);
+    try {
+      const result = await generateExamples(topic.id);
+      setAiResultContent(result.content);
+    } catch {
+      setAiResultContent("Failed to generate examples. Please check your AI settings and try again.");
+    } finally {
+      setAiLoading(false);
+      setAiLoadingTopicId(null);
+      setAiLoadingType(null);
+    }
+  }
+
+  async function handleGenerateDiagram(topic: LearningTopic) {
+    setAiLoading(true);
+    setAiLoadingTopicId(topic.id);
+    setAiLoadingType("diagram");
+    setAiResultTitle(`Diagram: ${topic.title}`);
+    setAiResultContent("");
+    setAiResultOpen(true);
+    try {
+      const result = await generateDiagram(topic.id, "flowchart");
+      setAiResultContent(result.content);
+    } catch {
+      setAiResultContent("Failed to generate diagram. Please check your AI settings and try again.");
+    } finally {
+      setAiLoading(false);
+      setAiLoadingTopicId(null);
+      setAiLoadingType(null);
+    }
+  }
+
   // Get top-level topics (those that could serve as parents)
   function getTopLevelTopics(): LearningTopic[] {
     if (!roadmap) return [];
@@ -415,6 +466,34 @@ export default function RoadmapDetailPage() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1 shrink-0">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-purple-600 hover:text-purple-700"
+                                  onClick={() => handleGenerateExamples(topic)}
+                                  disabled={aiLoadingTopicId === topic.id}
+                                  title="Generate code examples with AI"
+                                >
+                                  {aiLoadingTopicId === topic.id && aiLoadingType === "examples" ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Sparkles className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-blue-600 hover:text-blue-700"
+                                  onClick={() => handleGenerateDiagram(topic)}
+                                  disabled={aiLoadingTopicId === topic.id}
+                                  title="Generate diagram with AI"
+                                >
+                                  {aiLoadingTopicId === topic.id && aiLoadingType === "diagram" ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <GitBranch className="h-4 w-4" />
+                                  )}
+                                </Button>
                                 {topic.notes && (
                                   <Button
                                     variant="ghost"
@@ -653,6 +732,15 @@ export default function RoadmapDetailPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* AI Result Dialog */}
+        <AiResultDialog
+          open={aiResultOpen}
+          onOpenChange={setAiResultOpen}
+          title={aiResultTitle}
+          content={aiResultContent}
+          isLoading={aiLoading}
+        />
       </div>
     </AppShell>
   );

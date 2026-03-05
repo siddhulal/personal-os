@@ -20,7 +20,7 @@ export function BacklinksPanel({ noteId, onNavigate }: BacklinksPanelProps) {
   if (backlinks.length === 0) return null;
 
   return (
-    <div className="border-t bg-muted/20 px-6 py-3">
+    <div className="border-t bg-card/50 px-6 py-3">
       <div className="flex items-center gap-2 mb-2">
         <ArrowLeft className="h-3.5 w-3.5 text-muted-foreground" />
         <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">

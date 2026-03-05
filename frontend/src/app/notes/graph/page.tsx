@@ -25,12 +25,31 @@ interface SimEdge {
 export default function KnowledgeGraphPage() {
   const router = useRouter();
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<number>(0);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [nodes, setNodes] = useState<SimNode[]>([]);
   const [edges, setEdges] = useState<SimEdge[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [draggedNode, setDraggedNode] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
+
+  // Track container size
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setDimensions({ width, height });
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const { data: graph, isLoading } = useQuery<NoteGraph>({
     queryKey: ["note-graph"],
@@ -40,21 +59,20 @@ export default function KnowledgeGraphPage() {
   // Initialize simulation nodes
   useEffect(() => {
     if (!graph) return;
-    const width = 800;
-    const height = 600;
+    const { width, height } = dimensions;
 
     const simNodes: SimNode[] = graph.nodes.map((n, i) => ({
       id: n.id,
       title: n.title,
-      x: width / 2 + (Math.random() - 0.5) * 300,
-      y: height / 2 + (Math.random() - 0.5) * 300,
+      x: width / 2 + (Math.random() - 0.5) * Math.min(300, width * 0.4),
+      y: height / 2 + (Math.random() - 0.5) * Math.min(300, height * 0.4),
       vx: 0,
       vy: 0,
     }));
 
     setNodes(simNodes);
     setEdges(graph.edges.map((e) => ({ sourceId: e.sourceId, targetId: e.targetId })));
-  }, [graph]);
+  }, [graph, dimensions]);
 
   // Force simulation
   const simulate = useCallback(() => {
@@ -62,8 +80,7 @@ export default function KnowledgeGraphPage() {
       if (prevNodes.length === 0) return prevNodes;
 
       const newNodes = prevNodes.map((n) => ({ ...n }));
-      const width = 800;
-      const height = 600;
+      const { width, height } = dimensions;
 
       // Repulsion between all nodes
       for (let i = 0; i < newNodes.length; i++) {
@@ -119,7 +136,7 @@ export default function KnowledgeGraphPage() {
     });
 
     animRef.current = requestAnimationFrame(simulate);
-  }, [edges, draggedNode]);
+  }, [edges, draggedNode, dimensions]);
 
   useEffect(() => {
     if (nodes.length > 0) {
@@ -128,33 +145,48 @@ export default function KnowledgeGraphPage() {
     return () => cancelAnimationFrame(animRef.current);
   }, [nodes.length > 0, simulate]);
 
+  /** Convert client coords to SVG viewBox coords */
+  const clientToSvg = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!svgRef.current) return { x: clientX, y: clientY };
+      const rect = svgRef.current.getBoundingClientRect();
+      const scaleX = dimensions.width / rect.width;
+      const scaleY = dimensions.height / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY,
+      };
+    },
+    [dimensions]
+  );
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
-      if (!draggedNode || !svgRef.current) return;
-      const rect = svgRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left - dragOffset.current.x;
-      const y = e.clientY - rect.top - dragOffset.current.y;
+      if (!draggedNode) return;
+      const pt = clientToSvg(e.clientX, e.clientY);
+      const x = pt.x - dragOffset.current.x;
+      const y = pt.y - dragOffset.current.y;
       setNodes((prev) =>
         prev.map((n) =>
           n.id === draggedNode ? { ...n, x, y, vx: 0, vy: 0 } : n
         )
       );
     },
-    [draggedNode]
+    [draggedNode, clientToSvg]
   );
 
   const handleMouseDown = useCallback(
     (nodeId: string, e: React.MouseEvent) => {
       const node = nodes.find((n) => n.id === nodeId);
-      if (!node || !svgRef.current) return;
-      const rect = svgRef.current.getBoundingClientRect();
+      if (!node) return;
+      const pt = clientToSvg(e.clientX, e.clientY);
       dragOffset.current = {
-        x: e.clientX - rect.left - node.x,
-        y: e.clientY - rect.top - node.y,
+        x: pt.x - node.x,
+        y: pt.y - node.y,
       };
       setDraggedNode(nodeId);
     },
-    [nodes]
+    [nodes, clientToSvg]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -192,12 +224,13 @@ export default function KnowledgeGraphPage() {
                 </div>
               </div>
             ) : (
+              <div ref={containerRef} className="w-full h-[600px]">
               <svg
                 ref={svgRef}
                 width="100%"
-                height="600"
-                viewBox="0 0 800 600"
-                className="bg-muted/20 rounded-lg cursor-grab active:cursor-grabbing"
+                height="100%"
+                viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+                className="bg-card/50 rounded-lg cursor-grab active:cursor-grabbing"
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
@@ -268,6 +301,7 @@ export default function KnowledgeGraphPage() {
                   );
                 })}
               </svg>
+              </div>
             )}
           </CardContent>
         </Card>

@@ -146,7 +146,7 @@ export default function HabitsPage() {
             ) : (
               <>
                 {/* Progress bar */}
-                <div className="flex items-center gap-3 p-4 rounded-lg border bg-muted/20">
+                <div className="flex items-center gap-3 p-4 rounded-lg border bg-card/50">
                   <div className="flex-1">
                     <div className="flex justify-between text-sm mb-1">
                       <span className="font-medium">Today&apos;s Progress</span>

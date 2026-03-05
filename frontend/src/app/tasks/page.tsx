@@ -194,7 +194,14 @@ export default function TasksPage() {
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, currentStatus }: { id: string; currentStatus: TaskStatus }) => {
       const newStatus: TaskStatus = currentStatus === "DONE" ? "TODO" : "DONE";
-      const res = await api.put(`/api/tasks/${id}`, { status: newStatus });
+      const task = tasks.find((t) => t.id === id);
+      const res = await api.put(`/api/tasks/${id}`, {
+        title: task?.title ?? "Untitled",
+        description: task?.description ?? null,
+        priority: task?.priority ?? "MEDIUM",
+        status: newStatus,
+        dueDate: task?.dueDate ?? null,
+      });
       return res.data;
     },
     onSuccess: () => {

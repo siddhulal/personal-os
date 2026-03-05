@@ -75,6 +75,12 @@ public class NoteController {
         return ResponseEntity.status(HttpStatus.CREATED).body(noteService.createLink(id, targetId));
     }
 
+    @PutMapping("/{id}/links/sync")
+    public ResponseEntity<Void> syncLinks(@PathVariable UUID id, @RequestBody List<UUID> targetIds) {
+        noteService.syncLinks(id, targetIds);
+        return ResponseEntity.ok().build();
+    }
+
     @DeleteMapping("/{sourceId}/links/{targetId}")
     public ResponseEntity<Void> deleteLink(@PathVariable UUID sourceId, @PathVariable UUID targetId) {
         noteService.deleteLink(sourceId, targetId);

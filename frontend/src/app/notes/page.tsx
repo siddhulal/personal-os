@@ -19,6 +19,7 @@ import {
   searchNotes,
   getOrCreateDailyNote,
   createNoteLink,
+  syncNoteLinks,
 } from "@/lib/api/notebooks";
 import type { Notebook, Note } from "@/types";
 import {
@@ -30,9 +31,34 @@ import {
   Minimize2,
   ChevronRight,
 } from "lucide-react";
+import { CommandPalette } from "@/components/notes/CommandPalette";
+import { useTheme } from "next-themes";
+
+/** Recursively walk TipTap JSON to extract all wiki-link noteIds */
+function extractWikiLinkIds(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const doc = typeof json === "string" ? JSON.parse(json) : json;
+    const ids: string[] = [];
+    const walk = (node: any): void => {
+      if (!node) return;
+      if (node.type === "wikiLink" && node.attrs?.noteId) {
+        ids.push(node.attrs.noteId);
+      }
+      if (Array.isArray(node.content)) {
+        node.content.forEach(walk);
+      }
+    };
+    walk(doc);
+    return Array.from(new Set(ids));
+  } catch {
+    return [];
+  }
+}
 
 export default function NotesPage() {
   const queryClient = useQueryClient();
+  const { theme, setTheme } = useTheme();
   const [selectedNotebookId, setSelectedNotebookId] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
@@ -43,11 +69,16 @@ export default function NotesPage() {
   const [showNotebooks, setShowNotebooks] = useState(true);
   const [showPages, setShowPages] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
-  // Escape key exits fullscreen
+  // Escape key exits fullscreen, Cmd+K opens command palette
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && fullscreen) setFullscreen(false);
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -100,10 +131,21 @@ export default function NotesPage() {
       id: string;
       data: { title: string; content?: string; contentJson?: string };
     }) => updatePage(id, data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["pages", selectedSectionId] });
       queryClient.invalidateQueries({ queryKey: ["page", selectedPageId] });
       queryClient.invalidateQueries({ queryKey: ["notebooks"] });
+
+      // Sync wiki links from content
+      const linkIds = extractWikiLinkIds(variables.data.contentJson);
+      if (variables.id) {
+        syncNoteLinks(variables.id, linkIds)
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ["backlinks"] });
+            queryClient.invalidateQueries({ queryKey: ["note-graph"] });
+          })
+          .catch(() => {});
+      }
     },
     onError: () => {
       toast.error("Failed to save");
@@ -321,6 +363,20 @@ export default function NotesPage() {
     </div>
   );
 
+  const commandPalette = (
+    <CommandPalette
+      open={commandPaletteOpen}
+      onOpenChange={setCommandPaletteOpen}
+      onSelectNote={(noteId) => {
+        setSelectedPageId(noteId);
+        setPendingContentJson(null);
+        setPendingContentText(null);
+      }}
+      onDailyNote={() => dailyNoteMutation.mutate()}
+      onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+    />
+  );
+
   // Fullscreen overlay
   if (fullscreen) {
     return (
@@ -328,6 +384,7 @@ export default function NotesPage() {
         <div className="fixed inset-0 z-50 bg-background flex flex-col">
           {editorPanel}
         </div>
+        {commandPalette}
       </AppShell>
     );
   }
@@ -337,7 +394,7 @@ export default function NotesPage() {
       <div className="flex h-screen">
         {/* Column 1: Notebook Sidebar */}
         <div
-          className="border-r bg-muted/20 shrink-0 overflow-hidden transition-all duration-200"
+          className="border-r bg-card/50 shrink-0 overflow-hidden transition-all duration-200"
           style={{ width: showNotebooks ? "16rem" : "0" }}
         >
           <div className="w-64 h-full">
@@ -372,6 +429,7 @@ export default function NotesPage() {
         {/* Column 3: Editor */}
         {editorPanel}
       </div>
+      {commandPalette}
     </AppShell>
   );
 }

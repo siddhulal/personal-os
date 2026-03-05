@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "next-themes";
 import { useState, ReactNode } from "react";
 import { AuthProvider } from "./auth";
+import { AiChatProvider } from "./ai-chat-context";
 import { Toaster } from "sonner";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -23,8 +24,10 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
         <AuthProvider>
-          {children}
-          <Toaster position="top-right" richColors />
+          <AiChatProvider>
+            {children}
+            <Toaster position="top-right" richColors />
+          </AiChatProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

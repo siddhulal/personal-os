@@ -7,10 +7,16 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
+import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
+import { common, createLowlight } from "lowlight";
 import { useEffect } from "react";
-import { FormatToolbar } from "./FormatToolbar";
 import { WikiLink } from "./WikiLinkExtension";
 import { WikiLinkSuggestion } from "./WikiLinkSuggestion";
+import { SlashCommandMenu } from "./SlashCommandMenu";
+import { BubbleToolbar } from "./BubbleToolbar";
+import { Callout } from "./CalloutExtension";
+
+const lowlight = createLowlight(common);
 
 interface TipTapEditorProps {
   content: string | null;
@@ -29,7 +35,10 @@ export function TipTapEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
-        codeBlock: { HTMLAttributes: { class: "bg-muted rounded-md p-4 font-mono text-sm" } },
+        codeBlock: false, // Replaced by CodeBlockLowlight
+      }),
+      CodeBlockLowlight.configure({
+        lowlight,
       }),
       Link.configure({
         openOnClick: false,
@@ -38,9 +47,10 @@ export function TipTapEditor({
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({
-        placeholder: "Start writing... Use [[ to link notes",
+        placeholder: "Type '/' for commands, '[[' to link notes",
       }),
       Underline,
+      Callout,
       WikiLink.configure({
         onNavigate: onNavigateToNote,
       }),
@@ -50,7 +60,7 @@ export function TipTapEditor({
     editorProps: {
       attributes: {
         class:
-          "prose prose-sm max-w-none focus:outline-none min-h-[400px] px-4 py-3",
+          "tiptap prose prose-sm max-w-none focus:outline-none min-h-[400px] px-4 py-3",
       },
     },
     onUpdate: ({ editor }) => {
@@ -79,10 +89,11 @@ export function TipTapEditor({
 
   return (
     <div className="overflow-hidden bg-background relative">
-      <FormatToolbar editor={editor} />
       <div className="relative">
         <EditorContent editor={editor} />
+        <BubbleToolbar editor={editor} />
         <WikiLinkSuggestion editor={editor} />
+        <SlashCommandMenu editor={editor} />
       </div>
     </div>
   );

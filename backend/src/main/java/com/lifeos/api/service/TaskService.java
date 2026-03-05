@@ -86,6 +86,37 @@ public class TaskService {
     }
 
     @Transactional
+    public TaskResponse patchTask(UUID id, TaskRequest request) {
+        Task task = findTaskByIdAndUser(id);
+        if (request.getTitle() != null && !request.getTitle().isBlank()) {
+            task.setTitle(request.getTitle());
+        }
+        if (request.getDescription() != null) {
+            task.setDescription(request.getDescription());
+        }
+        if (request.getStatus() != null) {
+            task.setStatus(Task.Status.valueOf(request.getStatus()));
+        }
+        if (request.getPriority() != null) {
+            task.setPriority(Task.Priority.valueOf(request.getPriority()));
+        }
+        if (request.getDueDate() != null) {
+            task.setDueDate(request.getDueDate());
+        }
+        if (request.getProjectId() != null) {
+            Project project = projectRepository.findById(request.getProjectId())
+                .orElseThrow(() -> new ResourceNotFoundException("Project", "id", request.getProjectId()));
+            task.setProject(project);
+        }
+        if (request.getTagIds() != null) {
+            Set<Tag> tags = new HashSet<>(tagRepository.findByIdInAndUserId(request.getTagIds(), getCurrentUserId()));
+            task.setTags(tags);
+        }
+        task = taskRepository.save(task);
+        return mapToResponse(task);
+    }
+
+    @Transactional
     public void deleteTask(UUID id) {
         Task task = findTaskByIdAndUser(id);
         task.softDelete();

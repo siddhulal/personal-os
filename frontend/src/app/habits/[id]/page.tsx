@@ -1,21 +1,45 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import Link from "next/link";
-import { ArrowLeft, Flame, Trophy, Calendar, TrendingUp } from "lucide-react";
+import { ArrowLeft, Flame, Trophy, Calendar, TrendingUp, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { HabitCalendar } from "@/components/habits/HabitCalendar";
 import { WeeklyCompletionChart, MonthlyRateChart } from "@/components/habits/HabitChart";
 import { StreakBadge } from "@/components/habits/StreakBadge";
-import { fetchHabit, fetchHabitStats, fetchCompletions } from "@/lib/api/habits";
+import { fetchHabit, fetchHabitStats, fetchCompletions, deleteHabit } from "@/lib/api/habits";
 import type { Habit, HabitStats, HabitCompletion } from "@/types";
 
 export default function HabitDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const id = params.id as string;
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteHabit(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["habits"] });
+      queryClient.invalidateQueries({ queryKey: ["habits-today"] });
+      toast.success("Habit deleted");
+      router.push("/habits");
+    },
+    onError: () => toast.error("Failed to delete habit"),
+  });
 
   const { data: habit } = useQuery<Habit>({
     queryKey: ["habit", id],
@@ -71,13 +95,24 @@ export default function HabitDetailPage() {
               Back to Habits
             </Button>
           </Link>
-          <div className="flex items-center gap-3">
-            <div
-              className="w-4 h-4 rounded-full"
-              style={{ backgroundColor: habit.color }}
-            />
-            <h1 className="text-3xl font-bold tracking-tight">{habit.name}</h1>
-            <StreakBadge streak={habit.currentStreak} size="md" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-4 h-4 rounded-full"
+                style={{ backgroundColor: habit.color }}
+              />
+              <h1 className="text-3xl font-bold tracking-tight">{habit.name}</h1>
+              <StreakBadge streak={habit.currentStreak} size="md" />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={() => setDeleteConfirmOpen(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
           </div>
           {habit.description && (
             <p className="text-muted-foreground mt-1">{habit.description}</p>
@@ -192,6 +227,33 @@ export default function HabitDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Habit</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &quot;{habit.name}&quot;? All
+              completion history will be lost. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

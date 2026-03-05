@@ -251,24 +251,24 @@ export type QuestionCategory =
 
 export interface InterviewQuestion {
   id: string;
-  question: string;
+  questionText: string;
   category: QuestionCategory;
   difficulty: QuestionDifficulty;
-  company: string | null;
-  role: string | null;
   tags: Tag[];
   answers: InterviewAnswer[];
   practiceCount: number;
-  lastPracticedAt: string | null;
+  lastConfidenceScore: number | null;
+  practiceStatus: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface InterviewAnswer {
   id: string;
-  content: string;
-  isFavorite: boolean;
-  questionId: string;
+  answerText: string;
+  keyPoints: string | null;
+  exampleScenarios: string | null;
+  mistakesToAvoid: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -398,6 +398,44 @@ export interface HabitSummary {
   currentStreak: number;
   longestStreak: number;
   completionRate: number;
+}
+
+// ============================================================
+// AI
+// ============================================================
+
+export type AiProviderType = "OLLAMA" | "OPENAI" | "GEMINI";
+
+export interface AiSettings {
+  id: string;
+  activeProvider: AiProviderType;
+  ollamaBaseUrl: string;
+  ollamaModel: string;
+  openaiKeySet: boolean;
+  openaiModel: string;
+  geminiKeySet: boolean;
+  geminiModel: string;
+}
+
+export interface AiConversation {
+  id: string;
+  title: string;
+  context: string | null;
+  messages?: AiChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiChatMessage {
+  id: string;
+  role: "USER" | "ASSISTANT" | "SYSTEM";
+  content: string;
+  createdAt: string;
+}
+
+export interface AiGenerateResponse {
+  content: string;
+  type: string;
 }
 
 // ============================================================

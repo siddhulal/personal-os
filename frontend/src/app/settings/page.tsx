@@ -3,22 +3,104 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "next-themes";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { User, Palette, Info, LogOut, Sun, Moon, Monitor } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { User, Palette, Info, LogOut, Sun, Moon, Monitor, Sparkles, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { fetchAiSettings, updateAiSettings, fetchProviderStatus, fetchOllamaModels } from "@/lib/api/ai";
+import type { AiSettings, AiProviderType } from "@/types";
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const queryClient = useQueryClient();
+
+  // AI Settings state
+  const [activeProvider, setActiveProvider] = useState<AiProviderType>("OLLAMA");
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434");
+  const [ollamaModel, setOllamaModel] = useState("llama3.1");
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [openaiModel, setOpenaiModel] = useState("gpt-4o");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [geminiModel, setGeminiModel] = useState("gemini-1.5-flash");
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const { data: aiSettings } = useQuery<AiSettings>({
+    queryKey: ["ai-settings"],
+    queryFn: fetchAiSettings,
+  });
+
+  const { data: providerStatus } = useQuery<Record<string, boolean>>({
+    queryKey: ["ai-provider-status"],
+    queryFn: fetchProviderStatus,
+  });
+
+  const { data: ollamaModels, refetch: refetchModels, isFetching: isLoadingModels } = useQuery<string[]>({
+    queryKey: ["ollama-models"],
+    queryFn: fetchOllamaModels,
+  });
+
+  // Sync AI settings to local state when loaded
+  useEffect(() => {
+    if (aiSettings) {
+      setActiveProvider(aiSettings.activeProvider);
+      setOllamaBaseUrl(aiSettings.ollamaBaseUrl || "http://localhost:11434");
+      setOllamaModel(aiSettings.ollamaModel || "llama3.1");
+      setOpenaiModel(aiSettings.openaiModel || "gpt-4o");
+      setGeminiModel(aiSettings.geminiModel || "gemini-1.5-flash");
+    }
+  }, [aiSettings]);
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: (data: Parameters<typeof updateAiSettings>[0]) => updateAiSettings(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ai-settings"] });
+      toast.success("AI settings saved");
+    },
+    onError: () => {
+      toast.error("Failed to save AI settings");
+    },
+  });
+
+  function handleSaveAiSettings() {
+    updateSettingsMutation.mutate({
+      activeProvider,
+      ollamaBaseUrl,
+      ollamaModel,
+      openaiApiKey: openaiApiKey || undefined,
+      openaiModel,
+      geminiApiKey: geminiApiKey || undefined,
+      geminiModel,
+    });
+  }
+
+  function StatusDot({ provider }: { provider: string }) {
+    const isAvailable = providerStatus?.[provider];
+    return (
+      <span
+        className={`inline-block w-2 h-2 rounded-full ${
+          isAvailable ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
+        }`}
+        title={isAvailable ? "Available" : "Not configured"}
+      />
+    );
+  }
 
   return (
     <AppShell>
@@ -92,6 +174,180 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* AI Configuration */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-purple-500" />
+                <CardTitle className="text-lg">AI Configuration</CardTitle>
+              </div>
+              <CardDescription>
+                Configure your AI providers for the Life OS brain
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Provider Selector */}
+              <div className="space-y-2">
+                <Label>Active Provider</Label>
+                <Select value={activeProvider} onValueChange={(v) => setActiveProvider(v as AiProviderType)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="OLLAMA">
+                      <span className="flex items-center gap-2">
+                        <StatusDot provider="OLLAMA" /> Ollama (Local)
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="OPENAI">
+                      <span className="flex items-center gap-2">
+                        <StatusDot provider="OPENAI" /> OpenAI
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="GEMINI">
+                      <span className="flex items-center gap-2">
+                        <StatusDot provider="GEMINI" /> Google Gemini
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
+              {/* Ollama Settings */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <StatusDot provider="OLLAMA" /> Ollama (Local)
+                </h4>
+                <div className="grid gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="ollama-url">Base URL</Label>
+                    <Input
+                      id="ollama-url"
+                      value={ollamaBaseUrl}
+                      onChange={(e) => setOllamaBaseUrl(e.target.value)}
+                      placeholder="http://localhost:11434"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="ollama-model">Model</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => refetchModels()}
+                        disabled={isLoadingModels}
+                      >
+                        <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingModels ? "animate-spin" : ""}`} />
+                        Refresh
+                      </Button>
+                    </div>
+                    {ollamaModels && ollamaModels.length > 0 ? (
+                      <Select value={ollamaModel} onValueChange={setOllamaModel}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ollamaModels.map((model) => (
+                            <SelectItem key={model} value={model}>
+                              {model}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="ollama-model"
+                        value={ollamaModel}
+                        onChange={(e) => setOllamaModel(e.target.value)}
+                        placeholder="qwen3:14b"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* OpenAI Settings */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <StatusDot provider="OPENAI" /> OpenAI
+                  {aiSettings?.openaiKeySet && (
+                    <span className="text-xs text-green-600 dark:text-green-400">(Key set)</span>
+                  )}
+                </h4>
+                <div className="grid gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="openai-key">API Key</Label>
+                    <Input
+                      id="openai-key"
+                      type="password"
+                      value={openaiApiKey}
+                      onChange={(e) => setOpenaiApiKey(e.target.value)}
+                      placeholder={aiSettings?.openaiKeySet ? "••••••••••••" : "sk-..."}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="openai-model">Model</Label>
+                    <Input
+                      id="openai-model"
+                      value={openaiModel}
+                      onChange={(e) => setOpenaiModel(e.target.value)}
+                      placeholder="gpt-4o"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Gemini Settings */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <StatusDot provider="GEMINI" /> Google Gemini
+                  {aiSettings?.geminiKeySet && (
+                    <span className="text-xs text-green-600 dark:text-green-400">(Key set)</span>
+                  )}
+                </h4>
+                <div className="grid gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="gemini-key">API Key</Label>
+                    <Input
+                      id="gemini-key"
+                      type="password"
+                      value={geminiApiKey}
+                      onChange={(e) => setGeminiApiKey(e.target.value)}
+                      placeholder={aiSettings?.geminiKeySet ? "••••••••••••" : "AIza..."}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="gemini-model">Model</Label>
+                    <Input
+                      id="gemini-model"
+                      value={geminiModel}
+                      onChange={(e) => setGeminiModel(e.target.value)}
+                      placeholder="gemini-1.5-flash"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Button onClick={handleSaveAiSettings} disabled={updateSettingsMutation.isPending} className="w-full">
+                {updateSettingsMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save AI Settings"
+                )}
+              </Button>
             </CardContent>
           </Card>
 

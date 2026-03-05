@@ -43,7 +43,21 @@ import {
   Target,
   Brain,
   CheckCircle2,
+  Sparkles,
+  Loader2,
+  Wand2,
+  ListPlus,
+  BookOpen,
+  X,
 } from "lucide-react";
+import { generateInterviewAnswer, generateInterviewQuestions, improveAnswer as improveAnswerApi } from "@/lib/api/ai";
+import { AiResultDialog } from "@/components/ai/AiResultDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type {
   InterviewQuestion,
   InterviewAnswer,
@@ -150,6 +164,26 @@ function QuestionBankTab({
   const [practiceQuestionId, setPracticeQuestionId] = useState<string | null>(null);
   const [answerFormOpenFor, setAnswerFormOpenFor] = useState<string | null>(null);
 
+  // AI state
+  const [aiResultOpen, setAiResultOpen] = useState(false);
+  const [aiResultContent, setAiResultContent] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiQuestionId, setAiQuestionId] = useState<string | null>(null);
+  const [aiAnswerId, setAiAnswerId] = useState<string | null>(null);
+  const [aiAction, setAiAction] = useState<"generate" | "improve">("generate");
+  const aiAbortRef = useRef<AbortController | null>(null);
+
+  // AI Generate Questions state
+  const [genQuestionsOpen, setGenQuestionsOpen] = useState(false);
+  const [genCategory, setGenCategory] = useState("MIXED");
+  const [genDifficulty, setGenDifficulty] = useState("MIXED");
+  const [genCount, setGenCount] = useState("5");
+  const [genLoading, setGenLoading] = useState(false);
+  const [generatedQuestions, setGeneratedQuestions] = useState<
+    { question: string; category: string; difficulty: string; selected: boolean }[]
+  >([]);
+  const genAbortRef = useRef<AbortController | null>(null);
+
   // Add question form state
   const [newQuestion, setNewQuestion] = useState("");
   const [newCategory, setNewCategory] = useState<QuestionCategory>("BEHAVIORAL");
@@ -187,7 +221,7 @@ function QuestionBankTab({
 
   const addQuestionMutation = useMutation({
     mutationFn: async (data: {
-      question: string;
+      questionText: string;
       category: QuestionCategory;
       difficulty: QuestionDifficulty;
     }) => {
@@ -211,7 +245,7 @@ function QuestionBankTab({
     mutationFn: async (data: { questionId: string; content: string }) => {
       const res = await api.post(
         `/api/interview/questions/${data.questionId}/answers`,
-        { content: data.content }
+        { answerText: data.content }
       );
       return res.data;
     },
@@ -223,6 +257,23 @@ function QuestionBankTab({
     },
     onError: () => {
       toast.error("Failed to add answer");
+    },
+  });
+
+  const updateAnswerMutation = useMutation({
+    mutationFn: async (data: { questionId: string; answerId: string; content: string }) => {
+      const res = await api.put(
+        `/api/interview/questions/${data.questionId}/answers/${data.answerId}`,
+        { answerText: data.content }
+      );
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["interview-questions"] });
+      toast.success("Answer updated successfully");
+    },
+    onError: () => {
+      toast.error("Failed to update answer");
     },
   });
 
@@ -271,7 +322,7 @@ function QuestionBankTab({
       return;
     }
     addQuestionMutation.mutate({
-      question: newQuestion.trim(),
+      questionText: newQuestion.trim(),
       category: newCategory,
       difficulty: newDifficulty,
     });
@@ -302,9 +353,175 @@ function QuestionBankTab({
     });
   }
 
+  async function handleAiGenerateAnswer(questionId: string) {
+    setAiLoading(true);
+    setAiQuestionId(questionId);
+    setAiAnswerId(null);
+    setAiAction("generate");
+    setAiResultContent("");
+    setAiResultOpen(true);
+    const controller = new AbortController();
+    aiAbortRef.current = controller;
+    try {
+      const result = await generateInterviewAnswer(questionId);
+      if (!controller.signal.aborted) {
+        setAiResultContent(result.content);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== "AbortError") {
+        setAiResultContent("Failed to generate answer. Please check your AI settings and try again.");
+      }
+    } finally {
+      setAiLoading(false);
+      aiAbortRef.current = null;
+    }
+  }
+
+  async function handleAiImproveAnswer(questionId: string, answerId: string, action: string) {
+    setAiLoading(true);
+    setAiQuestionId(questionId);
+    setAiAnswerId(answerId);
+    setAiAction("improve");
+    setAiResultContent("");
+    setAiResultOpen(true);
+    const controller = new AbortController();
+    aiAbortRef.current = controller;
+    try {
+      const result = await improveAnswerApi(questionId, answerId, action);
+      if (!controller.signal.aborted) {
+        setAiResultContent(result.content);
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== "AbortError") {
+        setAiResultContent("Failed to improve answer. Please check your AI settings and try again.");
+      }
+    } finally {
+      setAiLoading(false);
+      aiAbortRef.current = null;
+    }
+  }
+
+  function handleCancelAi() {
+    if (aiAbortRef.current) {
+      aiAbortRef.current.abort();
+      aiAbortRef.current = null;
+    }
+    setAiLoading(false);
+    setAiResultOpen(false);
+    setAiResultContent("");
+  }
+
+  function handleSaveAiAnswer(questionId: string) {
+    addAnswerMutation.mutate({
+      questionId,
+      content: aiResultContent,
+    });
+    setAiResultOpen(false);
+  }
+
+  function handleUpdateAiAnswer(questionId: string, answerId: string) {
+    updateAnswerMutation.mutate({
+      questionId,
+      answerId,
+      content: aiResultContent,
+    });
+    setAiResultOpen(false);
+  }
+
   function openPracticeDialog(questionId: string) {
     setPracticeQuestionId(questionId);
     setPracticeDialogOpen(true);
+  }
+
+  async function handleGenerateQuestions() {
+    setGenLoading(true);
+    setGeneratedQuestions([]);
+    const controller = new AbortController();
+    genAbortRef.current = controller;
+    try {
+      const result = await generateInterviewQuestions(
+        genCategory,
+        genDifficulty,
+        parseInt(genCount, 10) || 5
+      );
+      if (controller.signal.aborted) return;
+      // Parse JSON from response - handle various LLM output formats
+      let content = result.content.trim();
+      // Strip <think>...</think> tags (qwen3 models)
+      content = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+      // Strip markdown code blocks if present
+      content = content.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+      // Extract JSON array if surrounded by other text
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        content = jsonMatch[0];
+      }
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        setGeneratedQuestions(
+          parsed.map((q: { question: string; category?: string; difficulty?: string }) => ({
+            question: q.question || "",
+            category: q.category || "OTHER",
+            difficulty: q.difficulty || "MEDIUM",
+            selected: true,
+          }))
+        );
+      } else {
+        toast.error("AI returned unexpected format. Try again.");
+      }
+    } catch (e) {
+      console.error("Failed to parse AI questions:", e);
+      toast.error("Failed to generate questions. Try again.");
+    } finally {
+      setGenLoading(false);
+      genAbortRef.current = null;
+    }
+  }
+
+  function handleCancelGenQuestions() {
+    if (genAbortRef.current) {
+      genAbortRef.current.abort();
+      genAbortRef.current = null;
+    }
+    setGenLoading(false);
+  }
+
+  function toggleQuestionSelection(index: number) {
+    setGeneratedQuestions((prev) =>
+      prev.map((q, i) => (i === index ? { ...q, selected: !q.selected } : q))
+    );
+  }
+
+  function toggleSelectAll() {
+    const allSelected = generatedQuestions.every((q) => q.selected);
+    setGeneratedQuestions((prev) =>
+      prev.map((q) => ({ ...q, selected: !allSelected }))
+    );
+  }
+
+  async function handleSaveSelectedQuestions() {
+    const selected = generatedQuestions.filter((q) => q.selected);
+    if (selected.length === 0) {
+      toast.error("Select at least one question to save");
+      return;
+    }
+    let saved = 0;
+    for (const q of selected) {
+      try {
+        await api.post("/api/interview/questions", {
+          questionText: q.question,
+          category: q.category,
+          difficulty: q.difficulty,
+        });
+        saved++;
+      } catch {
+        // continue saving others
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["interview-questions"] });
+    toast.success(`Saved ${saved} question${saved !== 1 ? "s" : ""}`);
+    setGenQuestionsOpen(false);
+    setGeneratedQuestions([]);
   }
 
   const questions = questionsData?.content ?? [];
@@ -343,10 +560,20 @@ function QuestionBankTab({
           </Select>
         </div>
 
-        <Button onClick={() => setAddDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Question
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="text-purple-600 border-purple-200 hover:bg-purple-50 dark:border-purple-800 dark:hover:bg-purple-950"
+            onClick={() => { setGenQuestionsOpen(true); setGeneratedQuestions([]); }}
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            AI Generate
+          </Button>
+          <Button onClick={() => setAddDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Question
+          </Button>
+        </div>
       </div>
 
       {/* Question List */}
@@ -396,7 +623,7 @@ function QuestionBankTab({
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-2">
                       <CardTitle className="text-base font-medium leading-snug">
-                        {question.question}
+                        {question.questionText}
                       </CardTitle>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline">
@@ -416,12 +643,9 @@ function QuestionBankTab({
                             Not practiced
                           </Badge>
                         )}
-                        {question.lastPracticedAt && (
+                        {question.practiceStatus && question.practiceStatus !== "NOT_PRACTICED" && (
                           <span className="text-xs text-muted-foreground">
-                            Last:{" "}
-                            {new Date(
-                              question.lastPracticedAt
-                            ).toLocaleDateString()}
+                            {question.practiceStatus}
                           </span>
                         )}
                       </div>
@@ -468,17 +692,48 @@ function QuestionBankTab({
                                   <span className="text-xs text-muted-foreground font-medium">
                                     Answer {index + 1}
                                   </span>
-                                  {answer.isFavorite && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-xs"
-                                    >
-                                      Favorite
-                                    </Badge>
-                                  )}
+                                  <div className="flex items-center gap-1">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-7 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950"
+                                          disabled={aiLoading && aiAnswerId === answer.id}
+                                        >
+                                          {aiLoading && aiAnswerId === answer.id ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <Wand2 className="h-3 w-3 mr-1" />
+                                          )}
+                                          <span className="text-xs">AI</span>
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem
+                                          onClick={() => handleAiImproveAnswer(question.id, answer.id, "improve")}
+                                        >
+                                          <Sparkles className="h-3 w-3 mr-2" />
+                                          Improve Answer
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => handleAiImproveAnswer(question.id, answer.id, "details")}
+                                        >
+                                          <ListPlus className="h-3 w-3 mr-2" />
+                                          Add More Details
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => handleAiImproveAnswer(question.id, answer.id, "explain")}
+                                        >
+                                          <BookOpen className="h-3 w-3 mr-2" />
+                                          More Explanation
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
                                 </div>
                                 <p className="text-sm whitespace-pre-wrap">
-                                  {answer.content}
+                                  {answer.answerText}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   Added{" "}
@@ -533,17 +788,33 @@ function QuestionBankTab({
                         </div>
                       </div>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setAnswerFormOpenFor(question.id);
-                          setNewAnswerContent("");
-                        }}
-                      >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Add Answer
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setAnswerFormOpenFor(question.id);
+                            setNewAnswerContent("");
+                          }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Answer
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-purple-600 border-purple-200 hover:bg-purple-50 dark:border-purple-800 dark:hover:bg-purple-950"
+                          onClick={() => handleAiGenerateAnswer(question.id)}
+                          disabled={aiLoading && aiQuestionId === question.id}
+                        >
+                          {aiLoading && aiQuestionId === question.id ? (
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3 w-3 mr-1" />
+                          )}
+                          AI Generate Answer
+                        </Button>
+                      </div>
                     )}
                   </CardContent>
                 )}
@@ -717,6 +988,180 @@ function QuestionBankTab({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI Generate Questions Dialog */}
+      <Dialog open={genQuestionsOpen} onOpenChange={(open) => {
+        if (!open && genLoading) handleCancelGenQuestions();
+        setGenQuestionsOpen(open);
+        if (!open) setGeneratedQuestions([]);
+      }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>AI Generate Interview Questions</DialogTitle>
+            <DialogDescription>
+              Generate interview questions using AI. Select which ones to save.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Controls */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Category</Label>
+              <Select value={genCategory} onValueChange={setGenCategory}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MIXED">Mixed</SelectItem>
+                  {CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{getCategoryLabel(cat)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Difficulty</Label>
+              <Select value={genDifficulty} onValueChange={setGenDifficulty}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MIXED">Mixed</SelectItem>
+                  {DIFFICULTIES.map((diff) => (
+                    <SelectItem key={diff} value={diff}>{diff}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Count</Label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={genCount}
+                onChange={(e) => setGenCount(e.target.value)}
+                className="h-9"
+              />
+            </div>
+          </div>
+
+          <Button
+            onClick={handleGenerateQuestions}
+            disabled={genLoading}
+            className="w-full"
+          >
+            {genLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Generate Questions
+              </>
+            )}
+          </Button>
+
+          {genLoading && (
+            <div className="flex justify-center">
+              <Button variant="outline" size="sm" onClick={handleCancelGenQuestions}>
+                <X className="h-3 w-3 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {/* Generated Questions List */}
+          {generatedQuestions.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">
+                  {generatedQuestions.filter((q) => q.selected).length} of{" "}
+                  {generatedQuestions.length} selected
+                </span>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={toggleSelectAll}>
+                  {generatedQuestions.every((q) => q.selected) ? "Deselect All" : "Select All"}
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+                {generatedQuestions.map((q, i) => (
+                  <div
+                    key={i}
+                    onClick={() => toggleQuestionSelection(i)}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      q.selected
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:bg-accent/50"
+                    }`}
+                  >
+                    <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center ${
+                      q.selected ? "bg-primary border-primary" : "border-muted-foreground"
+                    }`}>
+                      {q.selected && <CheckCircle2 className="w-3 h-3 text-primary-foreground" />}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-sm">{q.question}</p>
+                      <div className="flex gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {getCategoryLabel(q.category as QuestionCategory)}
+                        </Badge>
+                        <Badge className={`text-xs ${getDifficultyColor(q.difficulty as QuestionDifficulty)}`}>
+                          {q.difficulty}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button
+                onClick={handleSaveSelectedQuestions}
+                className="w-full"
+                disabled={generatedQuestions.filter((q) => q.selected).length === 0}
+              >
+                Save {generatedQuestions.filter((q) => q.selected).length} Question
+                {generatedQuestions.filter((q) => q.selected).length !== 1 ? "s" : ""}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Result Dialog */}
+      <AiResultDialog
+        open={aiResultOpen}
+        onOpenChange={(open) => {
+          if (!open && aiLoading) handleCancelAi();
+          else setAiResultOpen(open);
+        }}
+        title={aiAction === "improve" ? "AI Improved Answer" : "AI Generated Answer"}
+        content={aiResultContent}
+        isLoading={aiLoading}
+        onCancel={aiLoading ? handleCancelAi : undefined}
+        actions={
+          aiAction === "improve" && expandedId && aiAnswerId
+            ? [
+                {
+                  label: "Update Answer",
+                  onClick: () => handleUpdateAiAnswer(expandedId, aiAnswerId),
+                },
+                {
+                  label: "Save as New Answer",
+                  onClick: () => handleSaveAiAnswer(expandedId),
+                  variant: "outline",
+                },
+              ]
+            : expandedId
+            ? [
+                {
+                  label: "Save as Answer",
+                  onClick: () => handleSaveAiAnswer(expandedId),
+                },
+              ]
+            : undefined
+        }
+      />
     </div>
   );
 }
@@ -934,7 +1379,7 @@ function MockInterviewTab({
             </Badge>
           </div>
           <CardTitle className="text-xl leading-relaxed">
-            {currentQuestion.question}
+            {currentQuestion.questionText}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">

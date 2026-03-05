@@ -30,6 +30,17 @@ app:
 server:
   port: 8080
 
+ai:
+  ollama:
+    base-url: ${AI_OLLAMA_BASE_URL:http://host.docker.internal:11434}
+    model: ${AI_OLLAMA_MODEL:qwen3:14b}
+  openai:
+    api-key: ${AI_OPENAI_API_KEY:}
+    model: ${AI_OPENAI_MODEL:gpt-4o}
+  gemini:
+    api-key: ${AI_GEMINI_API_KEY:}
+    model: ${AI_GEMINI_MODEL:gemini-1.5-flash}
+
 logging:
   level:
     root: INFO

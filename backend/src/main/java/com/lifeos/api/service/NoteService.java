@@ -226,6 +226,43 @@ public class NoteService {
             .collect(Collectors.toList());
     }
 
+    @Transactional
+    public void syncLinks(UUID sourceId, List<UUID> targetIds) {
+        UUID userId = getCurrentUserId();
+        Note source = findNoteByIdAndUser(sourceId);
+
+        // Get existing outgoing links from this note
+        List<NoteLink> existingLinks = noteLinkRepository.findBySourceNoteIdAndUserId(sourceId, userId);
+        Set<UUID> existingTargetIds = existingLinks.stream()
+            .map(l -> l.getTargetNote().getId())
+            .collect(Collectors.toSet());
+
+        Set<UUID> desiredTargetIds = new HashSet<>(targetIds);
+
+        // Remove stale links
+        for (NoteLink link : existingLinks) {
+            if (!desiredTargetIds.contains(link.getTargetNote().getId())) {
+                noteLinkRepository.delete(link);
+            }
+        }
+
+        // Create new links
+        User user = getCurrentUser();
+        for (UUID targetId : desiredTargetIds) {
+            if (!existingTargetIds.contains(targetId) && !targetId.equals(sourceId)) {
+                Note target = noteRepository.findById(targetId).orElse(null);
+                if (target != null && target.getUser().getId().equals(userId) && target.getDeletedAt() == null) {
+                    NoteLink link = NoteLink.builder()
+                        .sourceNote(source)
+                        .targetNote(target)
+                        .user(user)
+                        .build();
+                    noteLinkRepository.save(link);
+                }
+            }
+        }
+    }
+
     // ==================== Private Helpers ====================
 
     private NoteLinkResponse mapLinkToResponse(NoteLink link) {

@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Sidebar } from "./sidebar";
 import { SidebarProvider, useSidebar } from "@/lib/sidebar-context";
+import { useAiChat } from "@/lib/ai-chat-context";
+import { AiChatSidebar } from "@/components/ai/AiChatSidebar";
+import { AiChatToggleButton } from "@/components/ai/AiChatToggleButton";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -14,6 +17,7 @@ interface AppShellProps {
 function AppShellInner({ children, noPadding }: AppShellProps) {
   const { user, isLoading } = useAuth();
   const { collapsed } = useSidebar();
+  const { isOpen: aiChatOpen, isExpanded: aiChatExpanded } = useAiChat();
   const router = useRouter();
 
   useEffect(() => {
@@ -37,7 +41,10 @@ function AppShellInner({ children, noPadding }: AppShellProps) {
       <Sidebar />
       <main
         className="transition-all duration-200"
-        style={{ paddingLeft: collapsed ? "4rem" : "16rem" }}
+        style={{
+          paddingLeft: collapsed ? "4rem" : "16rem",
+          paddingRight: aiChatOpen ? (aiChatExpanded ? "40rem" : "24rem") : "0",
+        }}
       >
         {noPadding ? (
           children
@@ -47,6 +54,8 @@ function AppShellInner({ children, noPadding }: AppShellProps) {
           </div>
         )}
       </main>
+      <AiChatSidebar />
+      <AiChatToggleButton />
     </div>
   );
 }
