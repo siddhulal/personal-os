@@ -196,14 +196,41 @@ public class AiGenerateService {
     public AiGenerateResponse processNoteText(AiGenerateRequest request) {
         User user = getCurrentUser();
         String action = request.getAction();
-        String selectedText = request.getSelectedText();
+        String selectedText = request.getSelectedText() != null ? request.getSelectedText() : "";
+        String context = request.getContext() != null ? request.getContext() : "";
+
+        // Truncate context to last 4000 chars to avoid token overflow
+        if (context.length() > 4000) {
+            context = context.substring(context.length() - 4000);
+        }
+
+        String contextPrefix = context.isEmpty() ? "" :
+                "Here is the full note context for reference:\n---\n" + context + "\n---\n\n";
+        String workingText = selectedText.isEmpty() ? context : selectedText;
 
         String prompt = switch (action.toLowerCase()) {
-            case "summarize" -> "Summarize the following text concisely while preserving key information:\n\n" + selectedText;
-            case "expand" -> "Expand on the following text with more detail, examples, and explanations:\n\n" + selectedText;
-            case "rewrite" -> "Rewrite the following text to be clearer, more professional, and better structured:\n\n" + selectedText;
-            case "explain" -> "Explain the following text in simple terms, as if explaining to someone new to the topic:\n\n" + selectedText;
-            default -> "Process the following text:\n\n" + selectedText;
+            case "summarize" -> contextPrefix +
+                    "Summarize the following text concisely while preserving key information:\n\n" + workingText;
+            case "expand" -> contextPrefix +
+                    "Expand on the following text with more detail, examples, and explanations:\n\n" + workingText;
+            case "rewrite" -> contextPrefix +
+                    "Rewrite the following text to be clearer, more professional, and better structured:\n\n" + workingText;
+            case "explain" -> contextPrefix +
+                    "Explain the following text in simple terms, as if explaining to someone new to the topic:\n\n" + workingText;
+            case "continue" -> contextPrefix +
+                    "Continue writing from where the following text left off. " +
+                    "Match the style, tone, and topic. Write 2-3 natural paragraphs:\n\n" + workingText;
+            case "generate_example" -> contextPrefix +
+                    "Generate practical code examples related to the following text. " +
+                    "Include well-commented code with explanations. Use markdown formatting:\n\n" + workingText;
+            case "add_details" -> contextPrefix +
+                    "Add more details, depth, and supporting information to the following text. " +
+                    "Include specific facts, examples, and clarifications:\n\n" + workingText;
+            case "generate_quiz" -> contextPrefix +
+                    "Generate a quiz (5 questions) based on the following text. " +
+                    "Include a mix of multiple choice and short answer questions. " +
+                    "Provide answers at the end. Use markdown formatting:\n\n" + workingText;
+            default -> contextPrefix + "Process the following text:\n\n" + workingText;
         };
 
         String response = callProvider(user, prompt);

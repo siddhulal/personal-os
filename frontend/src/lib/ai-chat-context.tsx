@@ -2,6 +2,13 @@
 
 import React, { createContext, useContext, useState, useCallback } from "react";
 
+export interface PageAiAction {
+  label: string;
+  action: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  onAction: () => void;
+}
+
 interface AiChatContextType {
   isOpen: boolean;
   isExpanded: boolean;
@@ -10,6 +17,9 @@ interface AiChatContextType {
   closeChat: () => void;
   toggleExpanded: () => void;
   currentContext: string | null;
+  pageActions: PageAiAction[];
+  setPageActions: (actions: PageAiAction[]) => void;
+  clearPageActions: () => void;
 }
 
 const AiChatContext = createContext<AiChatContextType | undefined>(undefined);
@@ -18,6 +28,7 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [currentContext, setCurrentContext] = useState<string | null>(null);
+  const [pageActions, setPageActionsState] = useState<PageAiAction[]>([]);
 
   const toggleChat = useCallback(() => {
     setIsOpen((prev) => !prev);
@@ -36,8 +47,19 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
     setIsExpanded((prev) => !prev);
   }, []);
 
+  const setPageActions = useCallback((actions: PageAiAction[]) => {
+    setPageActionsState(actions);
+  }, []);
+
+  const clearPageActions = useCallback(() => {
+    setPageActionsState([]);
+  }, []);
+
   return (
-    <AiChatContext.Provider value={{ isOpen, isExpanded, toggleChat, openChat, closeChat, toggleExpanded, currentContext }}>
+    <AiChatContext.Provider value={{
+      isOpen, isExpanded, toggleChat, openChat, closeChat, toggleExpanded, currentContext,
+      pageActions, setPageActions, clearPageActions,
+    }}>
       {children}
     </AiChatContext.Provider>
   );

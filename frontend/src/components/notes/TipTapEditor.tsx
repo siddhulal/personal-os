@@ -9,14 +9,34 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { common, createLowlight } from "lowlight";
-import { useEffect } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  PenLine,
+  Code,
+  BookOpen,
+  FileText,
+  ListCollapse,
+  ClipboardList,
+} from "lucide-react";
 import { WikiLink } from "./WikiLinkExtension";
 import { WikiLinkSuggestion } from "./WikiLinkSuggestion";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { BubbleToolbar } from "./BubbleToolbar";
 import { Callout } from "./CalloutExtension";
+import { AiResultDialog } from "@/components/ai/AiResultDialog";
+import { noteAssist } from "@/lib/api/ai";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 
 const lowlight = createLowlight(common);
+
+const NOTE_AI_ACTIONS = [
+  { label: "Continue Writing", action: "continue", icon: PenLine },
+  { label: "Generate Example", action: "generate_example", icon: Code },
+  { label: "Explain", action: "explain", icon: BookOpen },
+  { label: "Add Details", action: "add_details", icon: FileText },
+  { label: "Summarize", action: "summarize", icon: ListCollapse },
+  { label: "Generate Quiz", action: "generate_quiz", icon: ClipboardList },
+];
 
 interface TipTapEditorProps {
   content: string | null;
@@ -31,6 +51,41 @@ export function TipTapEditor({
   editable = true,
   onNavigateToNote,
 }: TipTapEditorProps) {
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResultOpen, setAiResultOpen] = useState(false);
+  const [aiResultContent, setAiResultContent] = useState("");
+  const [aiResultTitle, setAiResultTitle] = useState("");
+  const { setPageActions, clearPageActions } = useAiChat();
+  const editorRef = useRef<ReturnType<typeof useEditor>>(null) as React.MutableRefObject<ReturnType<typeof useEditor>>;
+
+  const handleAiAction = useCallback(
+    async (action: string, textAboveCursor: string, fullNoteText: string) => {
+      const actionLabels: Record<string, string> = {
+        continue: "Continue Writing",
+        generate_example: "Generate Example",
+        explain: "Explain",
+        add_details: "Add Details",
+        summarize: "Summarize",
+        generate_quiz: "Generate Quiz",
+      };
+
+      setAiLoading(true);
+      setAiResultTitle(`AI ${actionLabels[action] || action}`);
+      setAiResultContent("");
+      setAiResultOpen(true);
+
+      try {
+        const result = await noteAssist(action, textAboveCursor, fullNoteText);
+        setAiResultContent(result.content);
+      } catch {
+        setAiResultContent("Failed to process text. Please check your AI settings.");
+      } finally {
+        setAiLoading(false);
+      }
+    },
+    []
+  );
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -70,6 +125,31 @@ export function TipTapEditor({
     },
   });
 
+  // Keep editorRef in sync
+  editorRef.current = editor;
+
+  // Register page-specific AI actions with the global button
+  useEffect(() => {
+    if (!editable) return;
+
+    const actions: PageAiAction[] = NOTE_AI_ACTIONS.map((item) => ({
+      label: item.label,
+      action: item.action,
+      icon: item.icon,
+      onAction: () => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        const { from } = ed.state.selection;
+        const textAboveCursor = ed.state.doc.textBetween(0, from, "\n");
+        const fullNoteText = ed.getText();
+        handleAiAction(item.action, textAboveCursor, fullNoteText);
+      },
+    }));
+
+    setPageActions(actions);
+    return () => clearPageActions();
+  }, [editable, setPageActions, clearPageActions, handleAiAction]);
+
   useEffect(() => {
     if (!editor) return;
     if (content) {
@@ -87,14 +167,40 @@ export function TipTapEditor({
 
   if (!editor) return null;
 
+  function handleInsertAtCursor() {
+    if (!editor) return;
+    const { from } = editor.state.selection;
+    editor.chain().focus().insertContentAt(from, aiResultContent).run();
+    setAiResultOpen(false);
+  }
+
+  function handleInsertAtEnd() {
+    if (!editor) return;
+    const endPos = editor.state.doc.content.size;
+    editor.chain().focus().insertContentAt(endPos, "\n\n" + aiResultContent).run();
+    setAiResultOpen(false);
+  }
+
   return (
     <div className="overflow-hidden bg-background relative">
       <div className="relative">
         <EditorContent editor={editor} />
         <BubbleToolbar editor={editor} />
         <WikiLinkSuggestion editor={editor} />
-        <SlashCommandMenu editor={editor} />
+        <SlashCommandMenu editor={editor} onAiAction={handleAiAction} />
       </div>
+
+      <AiResultDialog
+        open={aiResultOpen}
+        onOpenChange={setAiResultOpen}
+        title={aiResultTitle}
+        content={aiResultContent}
+        isLoading={aiLoading}
+        actions={[
+          { label: "Insert at Cursor", onClick: handleInsertAtCursor },
+          { label: "Insert at End", onClick: handleInsertAtEnd, variant: "outline" },
+        ]}
+      />
     </div>
   );
 }

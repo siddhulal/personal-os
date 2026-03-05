@@ -12,6 +12,7 @@ import lombok.NoArgsConstructor;
 public class AiGenerateRequest {
     private String action;
     private String selectedText;
+    private String context;
     private String diagramType;
     private String category;
     private String difficulty;

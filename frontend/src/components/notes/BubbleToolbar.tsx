@@ -64,7 +64,8 @@ export function BubbleToolbar({ editor }: BubbleToolbarProps) {
     setAiResultOpen(true);
 
     try {
-      const result = await noteAssist(action, text);
+      const fullNoteText = editor.getText();
+      const result = await noteAssist(action, text, fullNoteText);
       setAiResultContent(result.content);
     } catch {
       setAiResultContent("Failed to process text. Please check your AI settings.");

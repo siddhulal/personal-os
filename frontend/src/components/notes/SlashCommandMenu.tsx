@@ -17,6 +17,11 @@ import {
   Lightbulb,
   AlertTriangle,
   ShieldAlert,
+  Sparkles,
+  PenLine,
+  BookOpen,
+  FileText,
+  ListCollapse,
 } from "lucide-react";
 import type { CalloutType } from "./CalloutExtension";
 
@@ -26,6 +31,7 @@ interface SlashCommandItem {
   icon: React.ReactNode;
   category: string;
   action: (editor: Editor) => void;
+  aiAction?: string;
 }
 
 const iconClass = "h-4 w-4";
@@ -129,13 +135,54 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     category: "Blocks",
     action: (editor) => editor.chain().focus().setCallout({ type: "danger" as CalloutType }).run(),
   },
+  {
+    label: "AI Continue Writing",
+    description: "Continue from where you left off",
+    icon: <PenLine className={`${iconClass} text-purple-500`} />,
+    category: "AI",
+    action: () => {},
+    aiAction: "continue",
+  },
+  {
+    label: "AI Generate Example",
+    description: "Generate code examples",
+    icon: <Sparkles className={`${iconClass} text-purple-500`} />,
+    category: "AI",
+    action: () => {},
+    aiAction: "generate_example",
+  },
+  {
+    label: "AI Explain",
+    description: "Explain in simple terms",
+    icon: <BookOpen className={`${iconClass} text-purple-500`} />,
+    category: "AI",
+    action: () => {},
+    aiAction: "explain",
+  },
+  {
+    label: "AI Add Details",
+    description: "Add depth and details",
+    icon: <FileText className={`${iconClass} text-purple-500`} />,
+    category: "AI",
+    action: () => {},
+    aiAction: "add_details",
+  },
+  {
+    label: "AI Summarize",
+    description: "Summarize the content",
+    icon: <ListCollapse className={`${iconClass} text-purple-500`} />,
+    category: "AI",
+    action: () => {},
+    aiAction: "summarize",
+  },
 ];
 
 interface SlashCommandMenuProps {
   editor: Editor;
+  onAiAction?: (action: string, textAboveCursor: string, fullNoteText: string) => void;
 }
 
-export function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
+export function SlashCommandMenu({ editor, onAiAction }: SlashCommandMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -156,12 +203,22 @@ export function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
       const { state } = editor;
       const from = slashPosRef.current;
       const to = state.selection.from;
-      editor.chain().focus().deleteRange({ from, to }).run();
-      item.action(editor);
+
+      if (item.aiAction && onAiAction) {
+        // Extract text above cursor and full note text before deleting slash
+        const textAboveCursor = state.doc.textBetween(0, from, "\n");
+        const fullNoteText = editor.getText();
+        editor.chain().focus().deleteRange({ from, to }).run();
+        onAiAction(item.aiAction, textAboveCursor, fullNoteText);
+      } else {
+        editor.chain().focus().deleteRange({ from, to }).run();
+        item.action(editor);
+      }
+
       setIsOpen(false);
       setQuery("");
     },
-    [editor]
+    [editor, onAiAction]
   );
 
   // Keyboard navigation
@@ -195,15 +252,18 @@ export function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
     const handleUpdate = () => {
       const { state } = editor;
       const { from } = state.selection;
-      // Look back up to 50 chars for the slash
-      const start = Math.max(0, from - 50);
-      const textBefore = state.doc.textBetween(start, from, "\n");
 
-      // Match "/" only at start of line or after whitespace
-      const match = textBefore.match(/(?:^|\n)\/([\w\s]{0,30})$/);
+      // Get the current node (paragraph) and position within it
+      const $pos = state.doc.resolve(from);
+      const textInBlock = $pos.parent.textBetween(0, $pos.parentOffset, "\n");
+
+      // Match "/" at start of the block or after whitespace
+      const match = textInBlock.match(/(?:^|\s)\/([\w\s]{0,30})$/);
 
       if (match) {
         const searchQuery = match[1] || "";
+        // Calculate slash position: how far back from cursor
+        const matchedLen = match[0].length; // includes the optional space + "/" + query
         slashPosRef.current = from - searchQuery.length - 1; // -1 for the "/"
         setQuery(searchQuery);
         setSelectedIndex(0);
@@ -254,7 +314,9 @@ export function SlashCommandMenu({ editor }: SlashCommandMenuProps) {
       <div className="p-1">
         {Object.entries(grouped).map(([category, items]) => (
           <div key={category}>
-            <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <div className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wider ${
+              category === "AI" ? "text-purple-500" : "text-muted-foreground"
+            }`}>
               {category}
             </div>
             {items.map((item) => {

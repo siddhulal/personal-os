@@ -143,8 +143,8 @@ export async function improveAnswer(
   return response.data;
 }
 
-export async function noteAssist(action: string, selectedText: string): Promise<AiGenerateResponse> {
-  const response = await api.post("/api/ai/generate/note-assist", { action, selectedText });
+export async function noteAssist(action: string, selectedText: string, context?: string): Promise<AiGenerateResponse> {
+  const response = await api.post("/api/ai/generate/note-assist", { action, selectedText, context });
   return response.data;
 }
 
