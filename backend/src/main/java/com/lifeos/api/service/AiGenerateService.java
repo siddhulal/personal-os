@@ -440,6 +440,20 @@ public class AiGenerateService {
             case GEMINI -> settings.getGeminiModel();
         };
 
+        String apiKey = switch (settings.getActiveProvider()) {
+            case OLLAMA -> null;
+            case OPENAI -> settings.getOpenaiApiKey();
+            case GEMINI -> settings.getGeminiApiKey();
+        };
+
+        String baseUrl = switch (settings.getActiveProvider()) {
+            case OLLAMA -> settings.getOllamaBaseUrl();
+            case OPENAI, GEMINI -> null;
+        };
+
+        log.info("Calling AI provider: {} with model: {}. API Key present: {}. Base URL: {}", 
+                settings.getActiveProvider(), model, (apiKey != null && !apiKey.isBlank()), baseUrl);
+
         AiRequest request = AiRequest.builder()
                 .systemPrompt("You are an AI assistant integrated into Life OS, a personal productivity application. " +
                         "Provide helpful, accurate, and well-formatted responses.")
@@ -448,6 +462,8 @@ public class AiGenerateService {
                         .content(prompt)
                         .build()))
                 .model(model)
+                .apiKey(apiKey)
+                .baseUrl(baseUrl)
                 .build();
 
         String response = provider.complete(request);

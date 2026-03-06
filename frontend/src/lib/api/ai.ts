@@ -159,3 +159,13 @@ export async function fetchOllamaModels(): Promise<string[]> {
   const response = await api.get("/api/ai/ollama/models");
   return response.data;
 }
+
+export async function fetchOpenAiModels(): Promise<string[]> {
+  const response = await api.get("/api/ai/openai/models");
+  return response.data;
+}
+
+export async function fetchGeminiModels(): Promise<string[]> {
+  const response = await api.get("/api/ai/gemini/models");
+  return response.data;
+}

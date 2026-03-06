@@ -332,7 +332,7 @@ export default function RoadmapDetailPage() {
     setAiResultOpen(true);
     try {
       const result = await generateExamples(topic.id);
-      setAiResultContent(result.content);
+      setAiResultContent(result.content || "No content generated.");
     } catch {
       setAiResultContent("Failed to generate examples. Please check your AI settings and try again.");
     } finally {
@@ -351,7 +351,7 @@ export default function RoadmapDetailPage() {
     setAiResultOpen(true);
     try {
       const result = await generateDiagram(topic.id, "flowchart");
-      setAiResultContent(result.content);
+      setAiResultContent(result.content || "No content generated.");
     } catch {
       setAiResultContent("Failed to generate diagram. Please check your AI settings and try again.");
     } finally {

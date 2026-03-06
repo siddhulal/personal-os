@@ -75,8 +75,10 @@ public class AiSettingsService {
                 .ollamaBaseUrl(settings.getOllamaBaseUrl())
                 .ollamaModel(settings.getOllamaModel())
                 .openaiKeySet(settings.getOpenaiApiKey() != null && !settings.getOpenaiApiKey().isBlank())
+                .openaiApiKey(settings.getOpenaiApiKey())
                 .openaiModel(settings.getOpenaiModel())
                 .geminiKeySet(settings.getGeminiApiKey() != null && !settings.getGeminiApiKey().isBlank())
+                .geminiApiKey(settings.getGeminiApiKey())
                 .geminiModel(settings.getGeminiModel())
                 .build();
     }

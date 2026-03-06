@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,34 +38,54 @@ public class GeminiProvider implements AiProvider {
     @Override
     public String complete(AiRequest request) {
         String model = request.getModel() != null ? request.getModel() : defaultModel;
+        if (!model.startsWith("models/")) {
+            model = "models/" + model;
+        }
+        String key = request.getApiKey() != null && !request.getApiKey().isBlank() ? request.getApiKey() : apiKey;
         Map<String, Object> body = buildRequestBody(request);
 
-        String response = webClient.post()
-                .uri("/v1beta/models/{model}:generateContent?key={key}", model, apiKey)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
-
         try {
+            String response = webClient.post()
+                    .uri("/v1beta/{model}:generateContent?key={key}", model, key)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(body)
+                    .retrieve()
+                    .onStatus(status -> status.isError(), clientResponse -> 
+                        clientResponse.bodyToMono(String.class).flatMap(errorBody -> {
+                            log.error("Gemini API error: {} - {}", clientResponse.statusCode(), errorBody);
+                            return Mono.error(new RuntimeException("Gemini API error: " + errorBody));
+                        })
+                    )
+                    .bodyToMono(String.class)
+                    .block();
+
             JsonNode node = objectMapper.readTree(response);
-            return node.path("candidates").get(0)
-                    .path("content").path("parts").get(0)
-                    .path("text").asText();
+            JsonNode candidates = node.path("candidates");
+            if (candidates.isArray() && !candidates.isEmpty()) {
+                JsonNode parts = candidates.get(0).path("content").path("parts");
+                if (parts.isArray() && !parts.isEmpty()) {
+                    return parts.get(0).path("text").asText("");
+                }
+            }
+            log.error("Unexpected Gemini response structure: {}", response);
+            return "Error: Received empty or malformed response from Gemini.";
         } catch (Exception e) {
-            log.error("Failed to parse Gemini response", e);
-            return "Error: Failed to parse response";
+            log.error("Failed to call Gemini API or parse response", e);
+            return "Error: " + e.getMessage();
         }
     }
 
     @Override
     public Flux<String> streamComplete(AiRequest request) {
         String model = request.getModel() != null ? request.getModel() : defaultModel;
+        if (!model.startsWith("models/")) {
+            model = "models/" + model;
+        }
+        String key = request.getApiKey() != null && !request.getApiKey().isBlank() ? request.getApiKey() : apiKey;
         Map<String, Object> body = buildRequestBody(request);
 
         return webClient.post()
-                .uri("/v1beta/models/{model}:streamGenerateContent?alt=sse&key={key}", model, apiKey)
+                .uri("/v1beta/{model}:streamGenerateContent?alt=sse&key={key}", model, key)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -82,6 +103,47 @@ public class GeminiProvider implements AiProvider {
                     }
                 })
                 .filter(s -> !s.isEmpty());
+    }
+
+    public List<String> listModels(String apiKeyOverride) {
+        String key = (apiKeyOverride != null && !apiKeyOverride.isBlank()) ? apiKeyOverride : apiKey;
+        try {
+            String response = webClient.get()
+                    .uri("/v1beta/models?key={key}", key)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            JsonNode node = objectMapper.readTree(response);
+            List<String> models = new ArrayList<>();
+            JsonNode modelsNode = node.path("models");
+            if (modelsNode.isArray()) {
+                for (JsonNode m : modelsNode) {
+                    String name = m.path("name").asText();
+                    if (name.startsWith("models/")) {
+                        name = name.substring(7);
+                    }
+                    // Filter for models that support generateContent
+                    JsonNode methods = m.path("supportedGenerationMethods");
+                    boolean supported = false;
+                    if (methods.isArray()) {
+                        for (JsonNode meth : methods) {
+                            if (meth.asText().equals("generateContent")) {
+                                supported = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (supported) {
+                        models.add(name);
+                    }
+                }
+            }
+            return models;
+        } catch (Exception e) {
+            log.error("Failed to list Gemini models", e);
+            return List.of("gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro");
+        }
     }
 
     private Map<String, Object> buildRequestBody(AiRequest request) {

@@ -96,7 +96,7 @@ public class CanvasService {
     public void deleteNode(UUID id) {
         CanvasNode node = findNodeByIdAndUser(id);
         // Delete associated edges first
-        canvasEdgeRepository.deleteBySourceNodeIdOrTargetNodeId(id, id);
+        canvasEdgeRepository.deleteBySourceNodeIdOrTargetNodeId(id);
         canvasNodeRepository.delete(node);
     }
 
@@ -112,6 +112,9 @@ public class CanvasService {
         edge.setSourceNode(sourceNode);
         edge.setTargetNode(targetNode);
         edge.setLabel(request.getLabel());
+        edge.setEdgeType(request.getEdgeType() != null ? request.getEdgeType() : "solid");
+        edge.setSourceHandle(request.getSourceHandle());
+        edge.setTargetHandle(request.getTargetHandle());
         edge.setUser(user);
 
         edge = canvasEdgeRepository.save(edge);
@@ -164,6 +167,9 @@ public class CanvasService {
             .sourceNodeId(edge.getSourceNode().getId())
             .targetNodeId(edge.getTargetNode().getId())
             .label(edge.getLabel())
+            .edgeType(edge.getEdgeType())
+            .sourceHandle(edge.getSourceHandle())
+            .targetHandle(edge.getTargetHandle())
             .build();
     }
 

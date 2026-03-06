@@ -19,6 +19,15 @@ public class CanvasEdge extends BaseEntity {
     @Column(length = 255)
     private String label;
 
+    @Column(name = "edge_type", length = 50)
+    private String edgeType = "solid";
+
+    @Column(name = "source_handle", length = 50)
+    private String sourceHandle;
+
+    @Column(name = "target_handle", length = 50)
+    private String targetHandle;
+
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_node_id", nullable = false)

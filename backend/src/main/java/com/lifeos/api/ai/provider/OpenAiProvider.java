@@ -83,8 +83,36 @@ public class OpenAiProvider implements AiProvider {
                 .filter(s -> s != null && !s.isEmpty());
     }
 
+    public List<String> listModels(String apiKeyOverride) {
+        String key = (apiKeyOverride != null && !apiKeyOverride.isBlank()) ? apiKeyOverride : apiKey;
+        try {
+            String response = webClient.get()
+                    .uri("/v1/models")
+                    .header("Authorization", "Bearer " + key)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            JsonNode node = objectMapper.readTree(response);
+            List<String> models = new ArrayList<>();
+            JsonNode dataNode = node.path("data");
+            if (dataNode.isArray()) {
+                for (JsonNode m : dataNode) {
+                    String id = m.path("id").asText();
+                    if (id.contains("gpt")) {
+                        models.add(id);
+                    }
+                }
+            }
+            return models;
+        } catch (Exception e) {
+            log.error("Failed to list OpenAI models", e);
+            return List.of("gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo");
+        }
+    }
+
     private String resolveApiKey(AiRequest request) {
-        return apiKey;
+        return request.getApiKey() != null && !request.getApiKey().isBlank() ? request.getApiKey() : apiKey;
     }
 
     private Map<String, Object> buildRequestBody(AiRequest request, boolean stream) {

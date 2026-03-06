@@ -417,12 +417,14 @@ export type AiProviderType = "OLLAMA" | "OPENAI" | "GEMINI";
 
 export interface AiSettings {
   id: string;
-  activeProvider: AiProviderType;
+  activeProvider: string;
   ollamaBaseUrl: string;
   ollamaModel: string;
   openaiKeySet: boolean;
+  openaiApiKey?: string;
   openaiModel: string;
   geminiKeySet: boolean;
+  geminiApiKey?: string;
   geminiModel: string;
 }
 
@@ -553,6 +555,9 @@ export interface CanvasEdge {
   sourceNodeId: string;
   targetNodeId: string;
   label: string | null;
+  edgeType: string | null;
+  sourceHandle: string | null;
+  targetHandle: string | null;
 }
 
 // ============================================================

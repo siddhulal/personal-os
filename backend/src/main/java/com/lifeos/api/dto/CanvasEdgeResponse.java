@@ -18,4 +18,7 @@ public class CanvasEdgeResponse {
     private UUID sourceNodeId;
     private UUID targetNodeId;
     private String label;
+    private String edgeType;
+    private String sourceHandle;
+    private String targetHandle;
 }

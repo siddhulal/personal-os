@@ -35,9 +35,12 @@ public class OllamaProvider implements AiProvider {
     @Override
     public String complete(AiRequest request) {
         Map<String, Object> body = buildRequestBody(request, false);
+        String uri = (request.getBaseUrl() != null && !request.getBaseUrl().isBlank()) 
+                ? request.getBaseUrl() + "/api/chat" 
+                : "/api/chat";
 
         String response = webClient.post()
-                .uri("/api/chat")
+                .uri(uri)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -56,9 +59,12 @@ public class OllamaProvider implements AiProvider {
     @Override
     public Flux<String> streamComplete(AiRequest request) {
         Map<String, Object> body = buildRequestBody(request, true);
+        String uri = (request.getBaseUrl() != null && !request.getBaseUrl().isBlank()) 
+                ? request.getBaseUrl() + "/api/chat" 
+                : "/api/chat";
 
         return webClient.post()
-                .uri("/api/chat")
+                .uri(uri)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -74,10 +80,14 @@ public class OllamaProvider implements AiProvider {
                 .filter(s -> !s.isEmpty());
     }
 
-    public List<String> listModels() {
+    public List<String> listModels(String baseUrl) {
         try {
+            String uri = (baseUrl != null && !baseUrl.isBlank()) 
+                    ? baseUrl + "/api/tags" 
+                    : "/api/tags";
+
             String response = webClient.get()
-                    .uri("/api/tags")
+                    .uri(uri)
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
@@ -92,7 +102,7 @@ public class OllamaProvider implements AiProvider {
             }
             return models;
         } catch (Exception e) {
-            log.error("Failed to list Ollama models", e);
+            log.error("Failed to list Ollama models at {}", baseUrl, e);
             return List.of();
         }
     }

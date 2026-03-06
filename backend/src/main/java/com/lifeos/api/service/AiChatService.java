@@ -75,6 +75,8 @@ public class AiChatService {
         // Resolve provider
         AiProvider provider = providerRegistry.getProvider(settings.getActiveProvider().name());
         String model = resolveModel(settings);
+        String apiKey = resolveApiKey(settings);
+        String baseUrl = resolveBaseUrl(settings);
 
         AiRequest aiRequest = AiRequest.builder()
                 .systemPrompt("You are a helpful AI assistant for a personal productivity app called Life OS. " +
@@ -82,6 +84,8 @@ public class AiChatService {
                         "Be concise but thorough. Use markdown formatting when helpful.")
                 .messages(messages)
                 .model(model)
+                .apiKey(apiKey)
+                .baseUrl(baseUrl)
                 .build();
 
         // Stream response via SSE, collecting tokens for persistence
@@ -186,6 +190,21 @@ public class AiChatService {
             case OLLAMA -> settings.getOllamaModel();
             case OPENAI -> settings.getOpenaiModel();
             case GEMINI -> settings.getGeminiModel();
+        };
+    }
+
+    private String resolveApiKey(AiSettings settings) {
+        return switch (settings.getActiveProvider()) {
+            case OLLAMA -> null;
+            case OPENAI -> settings.getOpenaiApiKey();
+            case GEMINI -> settings.getGeminiApiKey();
+        };
+    }
+
+    private String resolveBaseUrl(AiSettings settings) {
+        return switch (settings.getActiveProvider()) {
+            case OLLAMA -> settings.getOllamaBaseUrl();
+            case OPENAI, GEMINI -> null;
         };
     }
 

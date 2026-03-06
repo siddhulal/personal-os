@@ -15,6 +15,8 @@ public class AiRequest {
     private String systemPrompt;
     private List<AiMessage> messages;
     private String model;
+    private String apiKey;
+    private String baseUrl;
     @Builder.Default
     private double temperature = 0.7;
 }

@@ -17,7 +17,9 @@ public class AiSettingsResponse {
     private String ollamaBaseUrl;
     private String ollamaModel;
     private boolean openaiKeySet;
+    private String openaiApiKey;
     private String openaiModel;
     private boolean geminiKeySet;
+    private String geminiApiKey;
     private String geminiModel;
 }

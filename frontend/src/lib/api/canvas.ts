@@ -52,6 +52,9 @@ export async function createCanvasEdge(data: {
   sourceNodeId: string;
   targetNodeId: string;
   label?: string;
+  edgeType?: string;
+  sourceHandle?: string;
+  targetHandle?: string;
 }): Promise<CanvasEdge> {
   const response = await api.post("/api/canvas/edges", data);
   return response.data;

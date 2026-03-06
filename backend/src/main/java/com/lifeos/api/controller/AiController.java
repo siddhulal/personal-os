@@ -1,7 +1,9 @@
 package com.lifeos.api.controller;
 
 import com.lifeos.api.ai.AiProviderRegistry;
+import com.lifeos.api.ai.provider.GeminiProvider;
 import com.lifeos.api.ai.provider.OllamaProvider;
+import com.lifeos.api.ai.provider.OpenAiProvider;
 import com.lifeos.api.dto.*;
 import com.lifeos.api.service.AiChatService;
 import com.lifeos.api.service.AiGenerateService;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -102,6 +105,7 @@ public class AiController {
 
     @PostMapping("/generate/note-assist")
     public ResponseEntity<AiGenerateResponse> noteAssist(@Valid @RequestBody AiGenerateRequest request) {
+        System.out.println("Note assist request received: " + request.getAction());
         return ResponseEntity.ok(generateService.processNoteText(request));
     }
 
@@ -139,12 +143,35 @@ public class AiController {
     }
 
     @GetMapping("/ollama/models")
-    public ResponseEntity<java.util.List<String>> getOllamaModels() {
+    public ResponseEntity<List<String>> getOllamaModels() {
         try {
             OllamaProvider ollama = (OllamaProvider) providerRegistry.getProvider("OLLAMA");
-            return ResponseEntity.ok(ollama.listModels());
+            String baseUrl = settingsService.getSettings().getOllamaBaseUrl();
+            return ResponseEntity.ok(ollama.listModels(baseUrl));
         } catch (Exception e) {
-            return ResponseEntity.ok(java.util.List.of());
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    @GetMapping("/openai/models")
+    public ResponseEntity<List<String>> getOpenAiModels() {
+        try {
+            OpenAiProvider provider = (OpenAiProvider) providerRegistry.getProvider("OPENAI");
+            String apiKey = settingsService.getSettings().getOpenaiApiKey();
+            return ResponseEntity.ok(provider.listModels(apiKey));
+        } catch (Exception e) {
+            return ResponseEntity.ok(List.of("gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"));
+        }
+    }
+
+    @GetMapping("/gemini/models")
+    public ResponseEntity<List<String>> getGeminiModels() {
+        try {
+            GeminiProvider provider = (GeminiProvider) providerRegistry.getProvider("GEMINI");
+            String apiKey = settingsService.getSettings().getGeminiApiKey();
+            return ResponseEntity.ok(provider.listModels(apiKey));
+        } catch (Exception e) {
+            return ResponseEntity.ok(List.of("gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"));
         }
     }
 }
