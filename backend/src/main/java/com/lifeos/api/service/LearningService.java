@@ -11,6 +11,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -21,6 +25,7 @@ public class LearningService {
 
     private final LearningRoadmapRepository roadmapRepository;
     private final LearningTopicRepository topicRepository;
+    private final ObjectMapper objectMapper;
 
     // --- Roadmap CRUD ---
 
@@ -76,6 +81,9 @@ public class LearningService {
         topic.setOrderIndex(request.getOrderIndex() != null ? request.getOrderIndex() : 0);
         topic.setStatus(request.getStatus() != null ? LearningTopic.Status.valueOf(request.getStatus()) : LearningTopic.Status.NOT_STARTED);
         topic.setNotes(request.getNotes());
+        topic.setEstimatedHours(request.getEstimatedHours());
+        topic.setActualHours(request.getActualHours());
+        topic.setResources(request.getResources());
         topic.setRoadmap(roadmap);
 
         if (request.getParentTopicId() != null) {
@@ -105,6 +113,9 @@ public class LearningService {
         if (request.getOrderIndex() != null) topic.setOrderIndex(request.getOrderIndex());
         if (request.getStatus() != null) topic.setStatus(LearningTopic.Status.valueOf(request.getStatus()));
         topic.setNotes(request.getNotes());
+        topic.setEstimatedHours(request.getEstimatedHours());
+        topic.setActualHours(request.getActualHours());
+        topic.setResources(request.getResources());
 
         if (request.getParentTopicId() != null) {
             LearningTopic parentTopic = topicRepository.findById(request.getParentTopicId())
@@ -186,6 +197,9 @@ public class LearningService {
             .orderIndex(topic.getOrderIndex())
             .status(topic.getStatus().name())
             .notes(topic.getNotes())
+            .estimatedHours(topic.getEstimatedHours())
+            .actualHours(topic.getActualHours())
+            .resources(parseResources(topic.getResources()))
             .parentTopicId(topic.getParentTopic() != null ? topic.getParentTopic().getId() : null)
             .subtopics(subtopicResponses)
             .createdAt(topic.getCreatedAt())
@@ -201,11 +215,25 @@ public class LearningService {
             .orderIndex(topic.getOrderIndex())
             .status(topic.getStatus().name())
             .notes(topic.getNotes())
+            .estimatedHours(topic.getEstimatedHours())
+            .actualHours(topic.getActualHours())
+            .resources(parseResources(topic.getResources()))
             .parentTopicId(topic.getParentTopic() != null ? topic.getParentTopic().getId() : null)
             .subtopics(List.of())
             .createdAt(topic.getCreatedAt())
             .updatedAt(topic.getUpdatedAt())
             .build();
+    }
+
+    private List<String> parseResources(String resourcesJson) {
+        if (resourcesJson == null || resourcesJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(resourcesJson, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     private PageResponse<RoadmapResponse> toPageResponse(Page<LearningRoadmap> page) {

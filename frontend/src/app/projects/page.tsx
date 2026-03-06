@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import api from "@/lib/api";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,9 @@ import {
   FolderKanban,
   ChevronLeft,
   ChevronRight,
+  FileText,
+  ListChecks,
+  PlusCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -275,6 +279,54 @@ export default function ProjectsPage() {
   const isFirstPage = (projectPage?.page ?? 0) === 0;
   const isLastPage = projectPage?.last ?? true;
   const isMutating = createMutation.isPending || updateMutation.isPending;
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+
+  const registerAiActions = useCallback(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Summarize Project",
+        action: "summarize_project",
+        icon: FileText,
+        onAction: () => {
+          const firstProject = projects[0];
+          const context = firstProject
+            ? `Summarize this project:\n\nName: ${firstProject.name}\nDescription: ${firstProject.description || "N/A"}\nStatus: ${firstProject.status}\nTasks: ${firstProject.completedTaskCount}/${firstProject.taskCount} completed\nTarget: ${firstProject.targetDate || "N/A"}\n\nProvide a concise status summary and highlight any concerns.`
+            : "I'd like to get a project summary. Please describe the project you want summarized.";
+          openChat(context);
+        },
+      },
+      {
+        label: "Generate Project Plan",
+        action: "generate_project_plan",
+        icon: ListChecks,
+        onAction: () => {
+          const firstProject = projects[0];
+          const context = firstProject
+            ? `Generate a detailed project plan for:\n\nProject: ${firstProject.name}\nDescription: ${firstProject.description || "N/A"}\nStatus: ${firstProject.status}\nTarget Date: ${firstProject.targetDate || "N/A"}\n\nPlease suggest key milestones, tasks broken into phases, and a timeline.`
+            : "I want to generate a project plan. Please describe the project and its goals.";
+          openChat(context);
+        },
+      },
+      {
+        label: "Create Project from Description",
+        action: "create_project_from_description",
+        icon: PlusCircle,
+        onAction: () => {
+          openChat(
+            "I want to create a new project. Please help me define it with a name, description, status, start date, and target date. Describe your project idea and I will structure it."
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+  }, [projects, setPageActions, openChat]);
+
+  useEffect(() => {
+    registerAiActions();
+    return () => clearPageActions();
+  }, [registerAiActions, clearPageActions]);
 
   return (
     <AppShell>

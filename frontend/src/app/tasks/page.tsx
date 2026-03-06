@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import api from "@/lib/api";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,10 @@ import {
   Loader2,
   AlertCircle,
   FolderKanban,
+  ListPlus,
+  GitBranch,
+  ArrowUpDown,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -260,6 +265,68 @@ export default function TasksPage() {
   const isFirstPage = (taskPage?.page ?? 0) === 0;
   const isLastPage = taskPage?.last ?? true;
   const isMutating = createMutation.isPending || updateMutation.isPending;
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+
+  const registerAiActions = useCallback(() => {
+    const todoTasks = tasks.filter((t) => t.status === "TODO" || t.status === "IN_PROGRESS");
+    const taskSummary = todoTasks
+      .slice(0, 15)
+      .map((t) => `- [${t.priority}] ${t.title}${t.dueDate ? ` (due ${t.dueDate.split("T")[0]})` : ""}`)
+      .join("\n");
+
+    const actions: PageAiAction[] = [
+      {
+        label: "Create Task from Description",
+        action: "create_task_from_description",
+        icon: ListPlus,
+        onAction: () => {
+          openChat(
+            "I want to create a new task. Please help me define it with a title, description, priority (LOW/MEDIUM/HIGH/URGENT), and due date. Describe what you need to get done and I will structure it as a task."
+          );
+        },
+      },
+      {
+        label: "Suggest Subtasks",
+        action: "suggest_subtasks",
+        icon: GitBranch,
+        onAction: () => {
+          const firstTask = todoTasks[0];
+          const context = firstTask
+            ? `Break down this task into subtasks:\n\nTask: ${firstTask.title}\nDescription: ${firstTask.description || "N/A"}\nPriority: ${firstTask.priority}\n\nSuggest 3-5 concrete subtasks.`
+            : "I want to break a task into subtasks. Please describe the task you want to decompose.";
+          openChat(context);
+        },
+      },
+      {
+        label: "Prioritize Tasks",
+        action: "prioritize_tasks",
+        icon: ArrowUpDown,
+        onAction: () => {
+          openChat(
+            `Help me prioritize my current tasks. Here are my TODO/In-Progress tasks:\n\n${taskSummary || "No tasks found."}\n\nPlease suggest a priority ordering and explain your reasoning.`
+          );
+        },
+      },
+      {
+        label: "Generate Daily Plan",
+        action: "generate_daily_plan",
+        icon: CalendarClock,
+        onAction: () => {
+          openChat(
+            `Create a daily plan from my current tasks. Here are my open tasks:\n\n${taskSummary || "No tasks found."}\n\nPlease organize these into a structured daily schedule with time blocks and suggested order.`
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+  }, [tasks, setPageActions, openChat]);
+
+  useEffect(() => {
+    registerAiActions();
+    return () => clearPageActions();
+  }, [registerAiActions, clearPageActions]);
 
   return (
     <AppShell>

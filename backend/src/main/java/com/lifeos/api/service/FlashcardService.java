@@ -143,12 +143,16 @@ public class FlashcardService {
         int mastered = flashcardRepository.countMasteredCards(userId);
         List<String> decks = flashcardRepository.findDistinctDecks(userId);
 
+        long newCards = flashcardRepository.countByUserIdAndStateAndDeletedAtIsNull(userId, 0);
+        long learningCards = flashcardRepository.countByUserIdAndStateAndDeletedAtIsNull(userId, 1);
+        long reviewCards = flashcardRepository.countByUserIdAndStateAndDeletedAtIsNull(userId, 2);
+
         return FlashcardStatsResponse.builder()
             .totalCards(total)
             .dueCards(due)
-            .newCards(0)
-            .learningCards(0)
-            .reviewCards(0)
+            .newCards((int) newCards)
+            .learningCards((int) learningCards)
+            .reviewCards((int) reviewCards)
             .masteredCards(mastered)
             .decks(decks)
             .build();

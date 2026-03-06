@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ListChecks, GitBranch, TrendingUp } from "lucide-react";
 import api from "@/lib/api";
 import type { Goal, GoalStatus, GoalTimeframe, PageResponse } from "@/types";
 
@@ -188,6 +190,65 @@ export default function GoalsPage() {
       toast.error("Failed to update goal");
     },
   });
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+
+  const registerAiActions = useCallback(() => {
+    const activeGoals = goals.filter(
+      (g) => g.status === "NOT_STARTED" || g.status === "IN_PROGRESS"
+    );
+    const goalSummary = activeGoals
+      .slice(0, 10)
+      .map(
+        (g) =>
+          `- ${g.title} (${getStatusLabel(g.status)}, ${g.progress ?? 0}% progress, ${getTimeframeLabel(g.timeframe)})`
+      )
+      .join("\n");
+
+    const actions: PageAiAction[] = [
+      {
+        label: "Suggest Tasks for Goal",
+        action: "suggest_tasks_for_goal",
+        icon: ListChecks,
+        onAction: () => {
+          const firstGoal = activeGoals[0];
+          const context = firstGoal
+            ? `Suggest actionable tasks for this goal:\n\nGoal: ${firstGoal.title}\nDescription: ${firstGoal.description || "N/A"}\nTimeframe: ${getTimeframeLabel(firstGoal.timeframe)}\nProgress: ${firstGoal.progress ?? 0}%\n\nPlease suggest 5-7 concrete, actionable tasks to make progress on this goal.`
+            : "I'd like task suggestions for a goal. Please describe your goal.";
+          openChat(context);
+        },
+      },
+      {
+        label: "Break Down Goal",
+        action: "break_down_goal",
+        icon: GitBranch,
+        onAction: () => {
+          const firstGoal = activeGoals[0];
+          const context = firstGoal
+            ? `Break down this goal into smaller sub-goals or milestones:\n\nGoal: ${firstGoal.title}\nDescription: ${firstGoal.description || "N/A"}\nTimeframe: ${getTimeframeLabel(firstGoal.timeframe)}\nTarget Date: ${firstGoal.targetDate || "N/A"}\n\nPlease suggest 3-5 milestones with clear deliverables.`
+            : "I'd like to break down a goal into milestones. Please describe your goal.";
+          openChat(context);
+        },
+      },
+      {
+        label: "Track Progress Advice",
+        action: "track_progress_advice",
+        icon: TrendingUp,
+        onAction: () => {
+          openChat(
+            `Analyze my current goals and provide advice on tracking progress:\n\n${goalSummary || "No active goals found."}\n\nPlease assess my current progress and suggest strategies to stay on track.`
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+  }, [goals, setPageActions, openChat]);
+
+  useEffect(() => {
+    registerAiActions();
+    return () => clearPageActions();
+  }, [registerAiActions, clearPageActions]);
 
   function handleOpenCreate() {
     setFormData(emptyFormData);

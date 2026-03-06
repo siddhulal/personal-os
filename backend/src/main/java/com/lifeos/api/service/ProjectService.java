@@ -11,6 +11,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -19,6 +22,7 @@ import java.util.stream.Collectors;
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
+    private final TagRepository tagRepository;
 
     public PageResponse<ProjectResponse> getAllProjects(Pageable pageable) {
         UUID userId = getCurrentUserId();
@@ -38,7 +42,14 @@ public class ProjectService {
         project.setName(request.getName());
         project.setDescription(request.getDescription());
         project.setStatus(request.getStatus() != null ? Project.Status.valueOf(request.getStatus()) : Project.Status.ACTIVE);
+        project.setStartDate(request.getStartDate());
+        project.setTargetDate(request.getTargetDate());
         project.setUser(user);
+
+        if (request.getTagIds() != null && !request.getTagIds().isEmpty()) {
+            Set<Tag> tags = new HashSet<>(tagRepository.findByIdInAndUserId(request.getTagIds(), user.getId()));
+            project.setTags(tags);
+        }
 
         project = projectRepository.save(project);
         return mapToResponse(project);
@@ -51,6 +62,13 @@ public class ProjectService {
         project.setDescription(request.getDescription());
         if (request.getStatus() != null) {
             project.setStatus(Project.Status.valueOf(request.getStatus()));
+        }
+        project.setStartDate(request.getStartDate());
+        project.setTargetDate(request.getTargetDate());
+
+        if (request.getTagIds() != null) {
+            Set<Tag> tags = new HashSet<>(tagRepository.findByIdInAndUserId(request.getTagIds(), getCurrentUserId()));
+            project.setTags(tags);
         }
 
         project = projectRepository.save(project);
@@ -74,19 +92,33 @@ public class ProjectService {
     }
 
     private ProjectResponse mapToResponse(Project project) {
-        int taskCount = project.getTasks() != null
-            ? (int) project.getTasks().stream().filter(t -> t.getDeletedAt() == null).count()
-            : 0;
+        List<Task> activeTasks = project.getTasks() != null
+            ? project.getTasks().stream().filter(t -> t.getDeletedAt() == null).collect(Collectors.toList())
+            : List.of();
+        int taskCount = activeTasks.size();
+        int completedTaskCount = (int) activeTasks.stream()
+            .filter(t -> t.getStatus() == Task.Status.DONE)
+            .count();
         int noteCount = project.getNotes() != null
             ? (int) project.getNotes().stream().filter(n -> n.getDeletedAt() == null).count()
             : 0;
+
+        List<TagResponse> tagResponses = project.getTags() != null
+            ? project.getTags().stream()
+                .map(tag -> TagResponse.builder().id(tag.getId()).name(tag.getName()).color(tag.getColor()).build())
+                .collect(Collectors.toList())
+            : List.of();
 
         return ProjectResponse.builder()
             .id(project.getId())
             .name(project.getName())
             .description(project.getDescription())
             .status(project.getStatus().name())
+            .startDate(project.getStartDate())
+            .targetDate(project.getTargetDate())
+            .tags(tagResponses)
             .taskCount(taskCount)
+            .completedTaskCount(completedTaskCount)
             .noteCount(noteCount)
             .createdAt(project.getCreatedAt())
             .updatedAt(project.getUpdatedAt())

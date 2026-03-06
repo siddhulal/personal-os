@@ -95,6 +95,10 @@ export default function RoadmapDetailPage() {
   const [topicDescription, setTopicDescription] = useState("");
   const [topicOrderIndex, setTopicOrderIndex] = useState<number>(0);
   const [topicParentId, setTopicParentId] = useState<string>("");
+  const [topicEstimatedHours, setTopicEstimatedHours] = useState<string>("");
+  const [topicActualHours, setTopicActualHours] = useState<string>("");
+  const [topicResources, setTopicResources] = useState<string[]>([]);
+  const [newResource, setNewResource] = useState("");
 
   // Delete topic confirmation state
   const [deleteTopicDialogOpen, setDeleteTopicDialogOpen] = useState(false);
@@ -161,6 +165,9 @@ export default function RoadmapDetailPage() {
       description: string | null;
       orderIndex: number;
       parentTopicId: string | null;
+      estimatedHours: number | null;
+      actualHours: number | null;
+      resources: string | null;
     }) => {
       const response = await api.post(`/api/learning/roadmaps/${roadmapId}/topics`, data);
       return response.data;
@@ -176,7 +183,7 @@ export default function RoadmapDetailPage() {
   const updateTopicMutation = useMutation({
     mutationFn: async ({ topicId, data }: {
       topicId: string;
-      data: { title: string; description: string | null; orderIndex: number; parentTopicId: string | null };
+      data: { title: string; description: string | null; orderIndex: number; parentTopicId: string | null; estimatedHours?: number | null; actualHours?: number | null; resources?: string | null };
     }) => {
       const response = await api.put(`/api/learning/topics/${topicId}`, data);
       return response.data;
@@ -222,6 +229,10 @@ export default function RoadmapDetailPage() {
     setTopicDescription("");
     setTopicOrderIndex(0);
     setTopicParentId("");
+    setTopicEstimatedHours("");
+    setTopicActualHours("");
+    setTopicResources([]);
+    setNewResource("");
   }
 
   function openEditTopicDialog(topic: LearningTopic) {
@@ -230,6 +241,10 @@ export default function RoadmapDetailPage() {
     setTopicDescription(topic.description ?? "");
     setTopicOrderIndex(topic.orderIndex);
     setTopicParentId(topic.parentTopicId ?? "");
+    setTopicEstimatedHours(topic.estimatedHours != null ? String(topic.estimatedHours) : "");
+    setTopicActualHours(topic.actualHours != null ? String(topic.actualHours) : "");
+    setTopicResources(topic.resources ?? []);
+    setNewResource("");
     setTopicDialogOpen(true);
   }
 
@@ -253,12 +268,27 @@ export default function RoadmapDetailPage() {
       description: topicDescription.trim() || null,
       orderIndex: topicOrderIndex,
       parentTopicId: topicParentId && topicParentId !== "none" ? topicParentId : null,
+      estimatedHours: topicEstimatedHours ? parseFloat(topicEstimatedHours) : null,
+      actualHours: topicActualHours ? parseFloat(topicActualHours) : null,
+      resources: topicResources.length > 0 ? JSON.stringify(topicResources) : null,
     };
     if (editingTopic) {
       updateTopicMutation.mutate({ topicId: editingTopic.id, data: payload });
     } else {
       createTopicMutation.mutate(payload);
     }
+  }
+
+  function handleAddResource() {
+    const trimmed = newResource.trim();
+    if (trimmed && !topicResources.includes(trimmed)) {
+      setTopicResources([...topicResources, trimmed]);
+      setNewResource("");
+    }
+  }
+
+  function handleRemoveResource(index: number) {
+    setTopicResources(topicResources.filter((_, i) => i !== index));
   }
 
   function handleCycleStatus(topic: LearningTopic) {
@@ -708,6 +738,58 @@ export default function RoadmapDetailPage() {
                   value={topicOrderIndex}
                   onChange={(e) => setTopicOrderIndex(Number(e.target.value))}
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="topic-estimated-hours">Estimated Hours</Label>
+                  <Input
+                    id="topic-estimated-hours"
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="e.g., 4"
+                    value={topicEstimatedHours}
+                    onChange={(e) => setTopicEstimatedHours(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="topic-actual-hours">Actual Hours</Label>
+                  <Input
+                    id="topic-actual-hours"
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="e.g., 3"
+                    value={topicActualHours}
+                    onChange={(e) => setTopicActualHours(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Resources</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Add a URL or resource name"
+                    value={newResource}
+                    onChange={(e) => setNewResource(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddResource(); } }}
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={handleAddResource} disabled={!newResource.trim()}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {topicResources.length > 0 && (
+                  <ul className="space-y-1 mt-2">
+                    {topicResources.map((res, idx) => (
+                      <li key={idx} className="flex items-center justify-between gap-2 text-sm bg-muted rounded px-2 py-1">
+                        <span className="truncate">{res}</span>
+                        <Button type="button" variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => handleRemoveResource(idx)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="topic-parent">Parent Topic (optional, for subtopics)</Label>

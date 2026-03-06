@@ -42,4 +42,7 @@ public interface NoteRepository extends JpaRepository<Note, UUID> {
             @Param("userId") UUID userId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
+
+    @Query("SELECT COUNT(n) FROM Note n WHERE n.user.id = :userId AND n.updatedAt BETWEEN :start AND :end AND n.deletedAt IS NULL")
+    long countByUserIdAndUpdatedAtBetween(@Param("userId") UUID userId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

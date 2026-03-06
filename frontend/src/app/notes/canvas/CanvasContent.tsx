@@ -16,6 +16,7 @@ import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
+  Viewport,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -29,6 +30,13 @@ import {
   Check,
   X,
   MoreVertical,
+  Lock,
+  Unlock,
+  ChevronDown,
+  Pencil,
+  PlusCircle,
+  Sparkles,
+  Network,
 } from "lucide-react";
 import {
   fetchCanvasNodes,
@@ -44,6 +52,7 @@ import type {
   CanvasEdge as ApiCanvasEdge,
 } from "@/types";
 import { cn } from "@/lib/utils";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +67,44 @@ const COLORS = [
 const pickColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
 
 type EdgeStyleType = "solid" | "dotted" | "animated";
+
+// ─── Canvas List Types ──────────────────────────────────────────────────────────
+
+interface CanvasInfo {
+  id: string;
+  name: string;
+}
+
+const DEFAULT_CANVAS: CanvasInfo = { id: "default", name: "Default Canvas" };
+
+function getCanvasList(): CanvasInfo[] {
+  try {
+    const raw = localStorage.getItem("canvas-list");
+    if (raw) {
+      const parsed = JSON.parse(raw) as CanvasInfo[];
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+  return [DEFAULT_CANVAS];
+}
+
+function saveCanvasList(list: CanvasInfo[]) {
+  localStorage.setItem("canvas-list", JSON.stringify(list));
+}
+
+// ─── Debounce Helper ────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
+  let timer: ReturnType<typeof setTimeout>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((...args: any[]) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  }) as unknown as T;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -111,9 +158,9 @@ function apiEdgeToFlowEdge(e: ApiCanvasEdge): Edge {
   };
 }
 
-function buildFullNodePayload(node: Node) {
+function buildFullNodePayload(node: Node, canvasId: string) {
   return {
-    canvasId: "default",
+    canvasId,
     label: node.data.label ?? "",
     content: node.data.content ?? "",
     x: Math.round(node.position.x),
@@ -133,8 +180,6 @@ const NoteNode = ({ data, id, selected }: NodeProps) => {
   const [content, setContent] = useState(data.content || "");
 
   // Sync local state from parent data ONLY when not editing.
-  // This is the key fix: when data.label/content changes from outside
-  // (e.g. after API response or another node's update), the display updates.
   useEffect(() => {
     if (!isEditing) {
       setLabel(data.label || "");
@@ -167,17 +212,33 @@ const NoteNode = ({ data, id, selected }: NodeProps) => {
         selected ? "ring-2 ring-primary shadow-lg" : "hover:shadow-lg"
       )}
       style={{ minWidth: 240 }}
-      onDoubleClick={() => !isEditing && setIsEditing(true)}
+      onDoubleClick={() => !isEditing && !data.locked && setIsEditing(true)}
     >
-      {/* Connection handles — visible on hover or when selected */}
-      <Handle type="source" position={Position.Top} id="top"
-        className={cn(handleClass, "!-top-1.5")} />
-      <Handle type="source" position={Position.Bottom} id="bottom"
-        className={cn(handleClass, "!-bottom-1.5")} />
-      <Handle type="source" position={Position.Left} id="left"
-        className={cn(handleClass, "!-left-1.5")} />
-      <Handle type="source" position={Position.Right} id="right"
-        className={cn(handleClass, "!-right-1.5")} />
+      {/* Connection handles -- visible on hover or when selected */}
+      <Handle
+        type="source"
+        position={Position.Top}
+        id="top"
+        className={cn(handleClass, "!-top-1.5")}
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className={cn(handleClass, "!-bottom-1.5")}
+      />
+      <Handle
+        type="source"
+        position={Position.Left}
+        id="left"
+        className={cn(handleClass, "!-left-1.5")}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className={cn(handleClass, "!-right-1.5")}
+      />
 
       {/* Header bar */}
       <div
@@ -258,13 +319,56 @@ const nodeTypes = { note: NoteNode };
 
 // ─── Canvas Engine ──────────────────────────────────────────────────────────────
 
-function CanvasEngine() {
-  const { fitView, getViewport, getNode, getNodes } = useReactFlow();
+function CanvasEngine({ canvasId }: { canvasId: string }) {
+  const { fitView, setViewport, getViewport, getNode, getNodes } =
+    useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedEdgeType, setSelectedEdgeType] =
     useState<EdgeStyleType>("solid");
+
+  // ─── Lock state (persisted per canvas) ────────────────────────────────────
+  const [locked, setLocked] = useState(() => {
+    try {
+      return localStorage.getItem(`canvas-locked-${canvasId}`) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`canvas-locked-${canvasId}`, String(locked));
+  }, [locked, canvasId]);
+
+  // ─── Viewport persistence (debounced) ─────────────────────────────────────
+  const savedViewportRef = useRef<Viewport | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`canvas-viewport-${canvasId}`);
+      if (raw) {
+        savedViewportRef.current = JSON.parse(raw) as Viewport;
+      } else {
+        savedViewportRef.current = null;
+      }
+    } catch {
+      savedViewportRef.current = null;
+    }
+  }, [canvasId]);
+
+  const debouncedSaveViewport = useRef(
+    debounce((cid: string, vp: Viewport) => {
+      localStorage.setItem(`canvas-viewport-${cid}`, JSON.stringify(vp));
+    }, 300)
+  ).current;
+
+  const onMoveEnd = useCallback(
+    (_event: unknown, viewport: Viewport) => {
+      debouncedSaveViewport(canvasId, viewport);
+    },
+    [canvasId, debouncedSaveViewport]
+  );
 
   const initializedRef = useRef(false);
   const edgesInitializedRef = useRef(false);
@@ -275,18 +379,18 @@ function CanvasEngine() {
     edgeTypeRef.current = selectedEdgeType;
   }, [selectedEdgeType]);
 
-  // ─── API Queries (fetch once, no auto-refetch) ────────────────────────────
+  // ─── API Queries (fetch per canvasId, no auto-refetch) ────────────────────
 
   const { data: apiNodes, isSuccess: nodesReady } = useQuery({
-    queryKey: ["canvas-nodes"],
-    queryFn: () => fetchCanvasNodes("default"),
+    queryKey: ["canvas-nodes", canvasId],
+    queryFn: () => fetchCanvasNodes(canvasId),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });
 
   const { data: apiEdges, isSuccess: edgesReady } = useQuery({
-    queryKey: ["canvas-edges"],
-    queryFn: () => fetchCanvasEdges("default"),
+    queryKey: ["canvas-edges", canvasId],
+    queryFn: () => fetchCanvasEdges(canvasId),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });
@@ -311,19 +415,22 @@ function CanvasEngine() {
       // 2. Persist to backend with FULL node data (position + everything)
       const currentNode = getNode(id);
       if (currentNode) {
-        const payload = buildFullNodePayload({
-          ...currentNode,
-          data: { ...currentNode.data, ...updates },
-        });
+        const payload = buildFullNodePayload(
+          {
+            ...currentNode,
+            data: { ...currentNode.data, ...updates },
+          },
+          canvasId
+        );
         updateCanvasNode(id, payload).catch(() =>
           toast.error("Failed to save changes")
         );
       }
     },
-    [setNodes, getNode]
+    [setNodes, getNode, canvasId]
   );
 
-  // ─── Initialize nodes from API (ONE TIME) ────────────────────────────────
+  // ─── Initialize nodes from API (ONE TIME per mount) ───────────────────────
 
   useEffect(() => {
     if (initializedRef.current || !nodesReady || !apiNodes) return;
@@ -332,10 +439,14 @@ function CanvasEngine() {
     const rfNodes = apiNodes.map((n) => apiNodeToFlowNode(n, onUpdateNode));
     setNodes(rfNodes);
 
-    if (rfNodes.length > 0) {
+    // Restore saved viewport or fitView
+    const saved = savedViewportRef.current;
+    if (saved) {
+      setTimeout(() => setViewport(saved, { duration: 300 }), 200);
+    } else if (rfNodes.length > 0) {
       setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 200);
     }
-  }, [nodesReady, apiNodes, onUpdateNode, setNodes, fitView]);
+  }, [nodesReady, apiNodes, onUpdateNode, setNodes, fitView, setViewport]);
 
   // ─── Initialize edges from API (ONE TIME, after nodes) ────────────────────
 
@@ -352,7 +463,6 @@ function CanvasEngine() {
   const createNodeMut = useMutation({
     mutationFn: createCanvasNode,
     onSuccess: (newNode) => {
-      // Add real node from server to local state
       setNodes((nds) => [...nds, apiNodeToFlowNode(newNode, onUpdateNode)]);
       toast.success("Card added");
     },
@@ -367,7 +477,6 @@ function CanvasEngine() {
   const createEdgeMut = useMutation({
     mutationFn: createCanvasEdge,
     onSuccess: (newEdge) => {
-      // Replace optimistic temp edge with the real server edge
       setEdges((eds) => {
         const withoutTemp = eds.filter(
           (e) =>
@@ -395,7 +504,6 @@ function CanvasEngine() {
 
   const onNodeDragStop = useCallback(
     (_: React.MouseEvent, draggedNode: Node) => {
-      // Save positions for the dragged node + any other selected nodes (batch drag)
       const allNodes = getNodes();
       const idsToSave = new Set<string>();
       idsToSave.add(draggedNode.id);
@@ -406,19 +514,19 @@ function CanvasEngine() {
       allNodes
         .filter((n) => idsToSave.has(n.id))
         .forEach((node) => {
-          updateCanvasNode(node.id, buildFullNodePayload(node)).catch(() =>
-            toast.error("Failed to save position")
-          );
+          updateCanvasNode(
+            node.id,
+            buildFullNodePayload(node, canvasId)
+          ).catch(() => toast.error("Failed to save position"));
         });
     },
-    [getNodes]
+    [getNodes, canvasId]
   );
 
   const onConnect: OnConnect = useCallback(
     (params) => {
       if (!params.source || !params.target) return;
 
-      // Prevent duplicate edges between same source/target handles
       const duplicate = edges.some(
         (e) =>
           e.source === params.source &&
@@ -431,7 +539,6 @@ function CanvasEngine() {
       const edgeType = edgeTypeRef.current;
       const { animated, style } = buildEdgeVisuals(edgeType);
 
-      // Add optimistic temp edge immediately
       const tempEdge: Edge = {
         id: `temp-${Date.now()}`,
         source: params.source,
@@ -444,9 +551,8 @@ function CanvasEngine() {
       };
       setEdges((eds) => [...eds, tempEdge]);
 
-      // Persist to backend
       createEdgeMut.mutate({
-        canvasId: "default",
+        canvasId,
         sourceNodeId: params.source,
         targetNodeId: params.target,
         sourceHandle: params.sourceHandle || undefined,
@@ -454,17 +560,17 @@ function CanvasEngine() {
         edgeType,
       });
     },
-    [createEdgeMut, setEdges, edges]
+    [createEdgeMut, setEdges, edges, canvasId]
   );
 
   const onNodesDelete = useCallback(
     (deleted: Node[]) => {
-      // Delete from backend
       deleted.forEach((node) => deleteNodeMut.mutate(node.id));
-      // Clean up edges connected to deleted nodes
       const deletedIds = new Set(deleted.map((n) => n.id));
       setEdges((eds) =>
-        eds.filter((e) => !deletedIds.has(e.source) && !deletedIds.has(e.target))
+        eds.filter(
+          (e) => !deletedIds.has(e.source) && !deletedIds.has(e.target)
+        )
       );
     },
     [deleteNodeMut, setEdges]
@@ -498,7 +604,7 @@ function CanvasEngine() {
       const centerY = -y / zoom + window.innerHeight / 2 / zoom;
 
       createNodeMut.mutate({
-        canvasId: "default",
+        canvasId,
         label: "New Card",
         content: "",
         x: Math.round(centerX - NODE_WIDTH / 2),
@@ -510,7 +616,7 @@ function CanvasEngine() {
       });
     } catch {
       createNodeMut.mutate({
-        canvasId: "default",
+        canvasId,
         label: "New Card",
         content: "",
         x: Math.round(Math.random() * 400),
@@ -521,7 +627,7 @@ function CanvasEngine() {
         nodeType: "note",
       });
     }
-  }, [createNodeMut, getViewport]);
+  }, [createNodeMut, getViewport, canvasId]);
 
   const onDeleteSelected = useCallback(() => {
     const selectedNodes = nodes.filter((n) => n.selected);
@@ -540,6 +646,48 @@ function CanvasEngine() {
   const hasSelection =
     nodes.some((n) => n.selected) || edges.some((e) => e.selected);
 
+  // Pass locked state into node data so NoteNode can read it
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: { ...n.data, locked },
+      }))
+    );
+  }, [locked, setNodes]);
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+
+  useEffect(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Generate Canvas from Topic",
+        action: "generate_canvas_from_topic",
+        icon: Network,
+        onAction: () => {
+          openChat(
+            "I want to generate a mind map / concept map as canvas nodes. Tell me a topic and I will suggest a set of connected nodes with labels and descriptions that you can add to your canvas."
+          );
+        },
+      },
+      {
+        label: "Expand Selected Node",
+        action: "expand_selected_node",
+        icon: Sparkles,
+        onAction: () => {
+          const selectedNode = nodes.find((n) => n.selected);
+          const context = selectedNode
+            ? `Expand on this canvas node and suggest related child nodes:\n\nNode: ${selectedNode.data.label || "Untitled"}\nContent: ${selectedNode.data.content || "N/A"}\n\nPlease suggest 3-5 related sub-topics or ideas that could become child nodes.`
+            : "Select a node on the canvas first, then use this action to expand it with related child nodes. Or describe a topic to expand.";
+          openChat(context);
+        },
+      },
+    ];
+    setPageActions(actions);
+    return () => clearPageActions();
+  }, [setPageActions, clearPageActions, openChat, nodes]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -548,16 +696,19 @@ function CanvasEngine() {
       edges={edges}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
-      onConnect={onConnect}
-      onNodesDelete={onNodesDelete}
-      onEdgesDelete={onEdgesDelete}
-      onEdgeDoubleClick={onEdgeDoubleClick}
+      onConnect={locked ? undefined : onConnect}
+      onNodesDelete={locked ? undefined : onNodesDelete}
+      onEdgesDelete={locked ? undefined : onEdgesDelete}
+      onEdgeDoubleClick={locked ? undefined : onEdgeDoubleClick}
       onNodeDragStop={onNodeDragStop}
+      onMoveEnd={onMoveEnd}
       nodeTypes={nodeTypes}
+      nodesDraggable={!locked}
+      nodesConnectable={!locked}
       connectionMode={ConnectionMode.Loose}
       snapToGrid
       snapGrid={[15, 15]}
-      deleteKeyCode={["Backspace", "Delete"]}
+      deleteKeyCode={locked ? [] : ["Backspace", "Delete"]}
       multiSelectionKeyCode={["Meta", "Control"]}
       selectionKeyCode="Shift"
       proOptions={{ hideAttribution: true }}
@@ -570,6 +721,24 @@ function CanvasEngine() {
         position="top-right"
         className="flex items-center gap-2 bg-background/80 backdrop-blur p-1.5 rounded-lg border shadow-sm"
       >
+        {/* Lock / Unlock toggle */}
+        <Button
+          variant={locked ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => setLocked((prev) => !prev)}
+          className="h-8 text-xs font-medium"
+          title={locked ? "Unlock canvas" : "Lock canvas"}
+        >
+          {locked ? (
+            <Lock className="h-3.5 w-3.5 mr-1.5" />
+          ) : (
+            <Unlock className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          {locked ? "Locked" : "Unlocked"}
+        </Button>
+
+        <div className="w-px h-5 bg-border" />
+
         {/* Edge type selector: Solid | Dotted | Flowing */}
         <div className="flex bg-muted/50 rounded-md p-0.5">
           {(["solid", "dotted", "animated"] as EdgeStyleType[]).map((type) => (
@@ -592,7 +761,7 @@ function CanvasEngine() {
           size="sm"
           onClick={onAddCard}
           className="h-8 text-xs font-medium"
-          disabled={createNodeMut.isPending}
+          disabled={createNodeMut.isPending || locked}
         >
           {createNodeMut.isPending ? (
             <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin mr-1.5" />
@@ -617,6 +786,7 @@ function CanvasEngine() {
         <Button
           variant="outline"
           size="sm"
+          disabled={locked}
           onClick={() => {
             if (!hasSelection) {
               toast.info("Select nodes or edges to delete");
@@ -639,18 +809,198 @@ function CanvasEngine() {
         <h1 className="text-sm font-bold tracking-tight">Personal Canvas</h1>
         <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">
           {nodes.length} cards &bull; {edges.length} links
+          {locked && <span className="ml-2 text-amber-500">LOCKED</span>}
         </p>
       </Panel>
     </ReactFlow>
   );
 }
 
+// ─── Canvas Selector ────────────────────────────────────────────────────────────
+
+function CanvasSelector({
+  canvasList,
+  activeCanvasId,
+  onSelect,
+  onCreate,
+  onRename,
+  onDelete,
+}: {
+  canvasList: CanvasInfo[];
+  activeCanvasId: string;
+  onSelect: (id: string) => void;
+  onCreate: () => void;
+  onRename: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as HTMLElement)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const activeCanvas = canvasList.find((c) => c.id === activeCanvasId);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 text-xs font-medium gap-1.5 max-w-[200px] bg-background/80 backdrop-blur shadow-sm"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span className="truncate">{activeCanvas?.name || "Canvas"}</span>
+        <ChevronDown className="h-3 w-3 shrink-0" />
+      </Button>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-50 w-64 bg-popover border rounded-lg shadow-lg p-1">
+          <div className="max-h-60 overflow-y-auto">
+            {canvasList.map((canvas) => (
+              <div
+                key={canvas.id}
+                className={cn(
+                  "flex items-center justify-between px-2 py-1.5 rounded-md text-xs cursor-pointer group",
+                  canvas.id === activeCanvasId
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-muted"
+                )}
+                onClick={() => {
+                  onSelect(canvas.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="truncate font-medium">{canvas.name}</span>
+                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <button
+                    className="p-0.5 rounded hover:bg-background"
+                    title="Rename"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRename(canvas.id);
+                    }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                  {canvas.id !== "default" && (
+                    <button
+                      className="p-0.5 rounded hover:bg-destructive/10 text-destructive"
+                      title="Delete"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(canvas.id);
+                        setOpen(false);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="border-t mt-1 pt-1">
+            <button
+              className="flex items-center gap-1.5 w-full px-2 py-1.5 rounded-md text-xs hover:bg-muted font-medium"
+              onClick={() => {
+                onCreate();
+                setOpen(false);
+              }}
+            >
+              <PlusCircle className="h-3.5 w-3.5" />
+              New Canvas
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 export default function CanvasContent() {
+  const [canvasList, setCanvasList] = useState<CanvasInfo[]>(getCanvasList);
+  const [activeCanvasId, setActiveCanvasId] = useState<string>(() => {
+    try {
+      return localStorage.getItem("canvas-active") || "default";
+    } catch {
+      return "default";
+    }
+  });
+
+  // Persist active canvas
+  useEffect(() => {
+    localStorage.setItem("canvas-active", activeCanvasId);
+  }, [activeCanvasId]);
+
+  // Persist canvas list
+  useEffect(() => {
+    saveCanvasList(canvasList);
+  }, [canvasList]);
+
+  const handleCreate = useCallback(() => {
+    const name = prompt("Enter canvas name:");
+    if (!name?.trim()) return;
+    const id = crypto.randomUUID();
+    setCanvasList((prev) => [...prev, { id, name: name.trim() }]);
+    setActiveCanvasId(id);
+  }, []);
+
+  const handleRename = useCallback((id: string) => {
+    const current = getCanvasList().find((c) => c.id === id);
+    const name = prompt("Rename canvas:", current?.name || "");
+    if (!name?.trim()) return;
+    setCanvasList((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, name: name.trim() } : c))
+    );
+  }, []);
+
+  const handleDelete = useCallback((id: string) => {
+    if (id === "default") return;
+    const canvas = getCanvasList().find((c) => c.id === id);
+    if (!confirm(`Delete canvas "${canvas?.name}"? This cannot be undone.`))
+      return;
+    setCanvasList((prev) => prev.filter((c) => c.id !== id));
+    setActiveCanvasId((current) => (current === id ? "default" : current));
+    // Clean up localStorage for the deleted canvas
+    try {
+      localStorage.removeItem(`canvas-viewport-${id}`);
+      localStorage.removeItem(`canvas-locked-${id}`);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Key on ReactFlowProvider forces remount when switching canvases,
+  // ensuring clean state for each canvas.
   return (
-    <ReactFlowProvider>
-      <CanvasEngine />
-    </ReactFlowProvider>
+    <div className="relative w-full h-full">
+      {/* Canvas selector bar */}
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10">
+        <CanvasSelector
+          canvasList={canvasList}
+          activeCanvasId={activeCanvasId}
+          onSelect={setActiveCanvasId}
+          onCreate={handleCreate}
+          onRename={handleRename}
+          onDelete={handleDelete}
+        />
+      </div>
+      <ReactFlowProvider key={activeCanvasId}>
+        <CanvasEngine canvasId={activeCanvasId} />
+      </ReactFlowProvider>
+    </div>
   );
 }

@@ -6,6 +6,10 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -18,4 +22,10 @@ public class ProjectRequest {
     private String description;
 
     private String status;
+
+    private LocalDate startDate;
+
+    private LocalDate targetDate;
+
+    private List<UUID> tagIds;
 }

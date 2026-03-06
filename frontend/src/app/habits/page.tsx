@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { toast } from "sonner";
-import { Plus, CalendarCheck, LayoutGrid } from "lucide-react";
+import { Plus, CalendarCheck, LayoutGrid, Target, Lightbulb } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -81,6 +82,48 @@ export default function HabitsPage() {
     },
     onError: () => toast.error("Failed to delete habit"),
   });
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+
+  const registerAiActions = useCallback(() => {
+    const habitSummary = allHabits
+      .slice(0, 15)
+      .map(
+        (h) =>
+          `- ${h.name} (streak: ${h.currentStreak} days, ${h.completedToday ? "done today" : "not done today"})`
+      )
+      .join("\n");
+
+    const actions: PageAiAction[] = [
+      {
+        label: "Suggest Habits for Goal",
+        action: "suggest_habits_for_goal",
+        icon: Target,
+        onAction: () => {
+          openChat(
+            "I want to build habits that support my goals. Describe your goal and I will suggest daily/weekly habits that will help you achieve it."
+          );
+        },
+      },
+      {
+        label: "Optimize Habit Stack",
+        action: "optimize_habit_stack",
+        icon: Lightbulb,
+        onAction: () => {
+          openChat(
+            `Analyze my current habits and suggest improvements:\n\n${habitSummary || "No habits found."}\n\nPlease suggest ways to optimize my habit stack: better ordering, habit stacking opportunities, or habits to add/remove.`
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+  }, [allHabits, setPageActions, openChat]);
+
+  useEffect(() => {
+    registerAiActions();
+    return () => clearPageActions();
+  }, [registerAiActions, clearPageActions]);
 
   function handleFormSubmit(data: HabitFormData) {
     if (editingHabit) {

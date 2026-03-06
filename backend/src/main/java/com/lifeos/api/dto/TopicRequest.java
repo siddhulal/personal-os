@@ -25,5 +25,11 @@ public class TopicRequest {
 
     private String notes;
 
+    private Double estimatedHours;
+
+    private Double actualHours;
+
+    private String resources;
+
     private UUID parentTopicId;
 }

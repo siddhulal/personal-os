@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ import {
   Brain,
   Zap,
   Check,
+  Sparkles,
+  FileText,
 } from "lucide-react";
 import {
   fetchFlashcards,
@@ -140,6 +143,36 @@ export default function FlashcardsPage() {
     },
     onError: () => toast.error("Failed to submit review"),
   });
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+
+  useEffect(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Generate Flashcards",
+        action: "generate_flashcards",
+        icon: Sparkles,
+        onAction: () => {
+          openChat(
+            "Generate flashcards for me. Tell me a topic or subject and I will create question/answer pairs that you can add to your flashcard deck."
+          );
+        },
+      },
+      {
+        label: "Generate from Notes",
+        action: "generate_from_notes",
+        icon: FileText,
+        onAction: () => {
+          openChat(
+            "I want to generate flashcards from my notes. Paste or describe the content from your notes and I will create flashcard question/answer pairs from it."
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+    return () => clearPageActions();
+  }, [setPageActions, clearPageActions, openChat]);
 
   function startReview(deck?: string) {
     setReviewDeck(deck);

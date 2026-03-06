@@ -40,6 +40,13 @@ public class LearningTopic extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    private Double estimatedHours;
+
+    private Double actualHours;
+
+    @Column(columnDefinition = "TEXT")
+    private String resources;
+
     @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "roadmap_id", nullable = false)

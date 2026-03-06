@@ -123,11 +123,14 @@ public class AnalyticsService {
                 .filter(s -> !s.getStartedAt().isBefore(dayStart) && s.getStartedAt().isBefore(dayEnd))
                 .count();
 
+            int noteCount = (int) noteRepository.countByUserIdAndUpdatedAtBetween(userId, dayStart, dayEnd);
+            int flashcardCount = (int) flashcardRepository.countReviewedBetween(userId, dayStart, dayEnd);
+
             dailyActivity.add(AnalyticsResponse.DailyActivity.builder()
                 .date(date.format(fmt))
                 .tasks(taskCount)
-                .notes(0)
-                .flashcards(0)
+                .notes(noteCount)
+                .flashcards(flashcardCount)
                 .pomodoros(pomodoroCount)
                 .build());
         }
@@ -144,12 +147,16 @@ public class AnalyticsService {
             LocalDateTime wStart = weekStartDate.atStartOfDay();
             LocalDateTime wEnd = weekEndDate.plusDays(1).atStartOfDay();
 
-            int productivity = (int) tasks.stream()
+            int completedTasks = (int) tasks.stream()
                 .filter(t -> t.getStatus() == Task.Status.DONE
                     && t.getUpdatedAt() != null
                     && !t.getUpdatedAt().isBefore(wStart)
                     && t.getUpdatedAt().isBefore(wEnd))
                 .count();
+
+            int weekNotes = (int) noteRepository.countByUserIdAndUpdatedAtBetween(userId, wStart, wEnd);
+            int weekFlashcards = (int) flashcardRepository.countReviewedBetween(userId, wStart, wEnd);
+            int productivity = completedTasks + weekNotes + weekFlashcards;
 
             int focusMinutes = sessions.stream()
                 .filter(s -> !s.getStartedAt().isBefore(wStart) && s.getStartedAt().isBefore(wEnd))

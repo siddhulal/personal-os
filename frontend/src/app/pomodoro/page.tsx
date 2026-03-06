@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { toast } from "sonner";
 import {
   Timer,
@@ -12,6 +13,8 @@ import {
   Zap,
   Clock,
   Target,
+  CalendarClock,
+  FileText,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -208,6 +211,56 @@ export default function PomodoroPage() {
       setRemainingSeconds(focusDuration * 60);
     }
   }, [focusDuration, timerState]);
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+
+  const aiActionsContext = useMemo(() => {
+    const todoTasks = tasks.filter(
+      (t) => t.status === "TODO" || t.status === "IN_PROGRESS"
+    );
+    const taskSummary = todoTasks
+      .slice(0, 10)
+      .map((t) => `- [${t.priority}] ${t.title}`)
+      .join("\n");
+
+    const recentSessionsSummary = sessions
+      .slice(0, 5)
+      .map(
+        (s) =>
+          `- ${s.durationMinutes}min ${s.status.toLowerCase()}${s.taskTitle ? ` (${s.taskTitle})` : ""}${s.notes ? `: ${s.notes}` : ""}`
+      )
+      .join("\n");
+
+    return { taskSummary, recentSessionsSummary };
+  }, [tasks, sessions]);
+
+  useEffect(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Plan Focus Session",
+        action: "plan_focus_session",
+        icon: CalendarClock,
+        onAction: () => {
+          openChat(
+            `Help me plan my next focus session. Here are my current tasks:\n\n${aiActionsContext.taskSummary || "No tasks found."}\n\nBased on priorities and deadlines, what should I focus on next? Suggest a task and an appropriate focus duration.`
+          );
+        },
+      },
+      {
+        label: "Session Summary",
+        action: "session_summary",
+        icon: FileText,
+        onAction: () => {
+          openChat(
+            `Summarize my recent focus sessions:\n\n${aiActionsContext.recentSessionsSummary || "No recent sessions."}\n\nTotal sessions: ${stats?.totalSessions ?? 0}\nTotal focus minutes: ${stats?.totalMinutes ?? 0}\nSessions this week: ${stats?.sessionsThisWeek ?? 0}\n\nPlease provide insights on my productivity patterns and suggestions for improvement.`
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+    return () => clearPageActions();
+  }, [setPageActions, clearPageActions, openChat, aiActionsContext, stats]);
 
   // SVG ring constants
   const radius = 120;

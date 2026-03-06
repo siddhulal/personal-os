@@ -21,6 +21,9 @@ public class TopicResponse {
     private int orderIndex;
     private String status;
     private String notes;
+    private Double estimatedHours;
+    private Double actualHours;
+    private List<String> resources;
     private UUID parentTopicId;
     private List<TopicResponse> subtopics;
     private LocalDateTime createdAt;

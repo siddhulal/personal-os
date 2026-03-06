@@ -39,4 +39,9 @@ public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
 
     @Query("SELECT COUNT(f) FROM Flashcard f WHERE f.user.id = :userId AND f.deletedAt IS NULL AND f.state = 2")
     int countMasteredCards(@Param("userId") UUID userId);
+
+    @Query("SELECT COUNT(f) FROM Flashcard f WHERE f.user.id = :userId AND f.lastReview BETWEEN :start AND :end AND f.deletedAt IS NULL")
+    long countReviewedBetween(@Param("userId") UUID userId, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    long countByUserIdAndStateAndDeletedAtIsNull(UUID userId, int state);
 }
