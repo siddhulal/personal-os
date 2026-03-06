@@ -1,8 +1,15 @@
 import api from "@/lib/api";
 import type { CalendarEvent } from "@/types";
 
+// Backend expects LocalDateTime (no timezone). Strip trailing 'Z' from ISO strings.
+function toLocalDateTime(iso: string): string {
+  return iso.replace("Z", "").replace(/\.\d{3}$/, "");
+}
+
 export async function fetchCalendarEvents(start: string, end: string): Promise<CalendarEvent[]> {
-  const response = await api.get(`/api/calendar?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+  const response = await api.get(
+    `/api/calendar?start=${encodeURIComponent(toLocalDateTime(start))}&end=${encodeURIComponent(toLocalDateTime(end))}`
+  );
   return response.data;
 }
 

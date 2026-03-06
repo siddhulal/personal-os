@@ -291,8 +291,8 @@ export default function PomodoroPage() {
 
         {/* Timer Section */}
         <Card>
-          <CardContent className="p-6 md:p-8">
-            <div className="flex flex-col items-center gap-6">
+          <CardContent className="p-8 md:p-10">
+            <div className="flex flex-col items-center gap-8">
               {/* State Badge */}
               <Badge
                 variant={
@@ -302,7 +302,7 @@ export default function PomodoroPage() {
                     ? "secondary"
                     : "outline"
                 }
-                className="text-sm px-3 py-1"
+                className="text-sm px-4 py-1"
               >
                 {timerState === "FOCUS"
                   ? "Focusing"
@@ -318,7 +318,6 @@ export default function PomodoroPage() {
                   height={radius * 2}
                   className="-rotate-90"
                 >
-                  {/* Background ring */}
                   <circle
                     cx={radius}
                     cy={radius}
@@ -327,7 +326,6 @@ export default function PomodoroPage() {
                     strokeWidth={stroke}
                     className="stroke-muted"
                   />
-                  {/* Progress ring */}
                   <circle
                     cx={radius}
                     cy={radius}
@@ -340,7 +338,6 @@ export default function PomodoroPage() {
                     strokeDashoffset={strokeDashoffset}
                   />
                 </svg>
-                {/* Time display centered */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <span className="text-5xl md:text-6xl font-mono font-bold tracking-tight">
                     {formatTime(remainingSeconds)}
@@ -395,20 +392,21 @@ export default function PomodoroPage() {
 
               {/* Configuration (only when IDLE) */}
               {timerState === "IDLE" && (
-                <div className="w-full max-w-md space-y-4 pt-2">
+                <div className="w-full max-w-sm mx-auto space-y-5 pt-2 border-t">
                   {/* Focus Duration */}
-                  <div className="space-y-2">
+                  <div className="space-y-2 pt-4">
                     <label className="text-sm font-medium flex items-center gap-2">
                       <Zap className="h-4 w-4 text-primary" />
                       Focus Duration
                     </label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 justify-center">
                       {FOCUS_PRESETS.map((mins) => (
                         <Button
                           key={mins}
                           size="sm"
                           variant={focusDuration === mins ? "default" : "outline"}
                           onClick={() => setFocusDuration(mins)}
+                          className="min-w-[48px]"
                         >
                           {mins}m
                         </Button>
@@ -422,13 +420,14 @@ export default function PomodoroPage() {
                       <Coffee className="h-4 w-4 text-green-500" />
                       Break Duration
                     </label>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 justify-center">
                       {BREAK_PRESETS.map((mins) => (
                         <Button
                           key={mins}
                           size="sm"
                           variant={breakDuration === mins ? "default" : "outline"}
                           onClick={() => setBreakDuration(mins)}
+                          className="min-w-[48px]"
                         >
                           {mins}m
                         </Button>
@@ -445,7 +444,7 @@ export default function PomodoroPage() {
                         setSelectedTaskId(val === "none" ? null : val)
                       }
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select a task..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -466,6 +465,7 @@ export default function PomodoroPage() {
                       placeholder="What are you working on?"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
+                      className="w-full"
                     />
                   </div>
                 </div>
