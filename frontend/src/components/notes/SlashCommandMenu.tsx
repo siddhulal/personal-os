@@ -22,6 +22,8 @@ import {
   BookOpen,
   FileText,
   ListCollapse,
+  Activity,
+  Image as ImageIcon,
 } from "lucide-react";
 import type { CalloutType } from "./CalloutExtension";
 
@@ -175,6 +177,50 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     action: () => {},
     aiAction: "summarize",
   },
+  {
+    label: "AI Generate Diagram",
+    description: "Create a Mermaid diagram",
+    icon: <Activity className={`${iconClass} text-purple-500`} />,
+    category: "AI",
+    action: () => {},
+    aiAction: "generate_diagram",
+  },
+  {
+    label: "Image",
+    description: "Insert an image",
+    icon: <ImageIcon className={iconClass} />,
+    category: "Blocks",
+    action: (editor) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = async () => {
+        if (input.files?.length) {
+          const file = input.files[0];
+          const formData = new FormData();
+          formData.append("file", file);
+          try {
+            const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://localhost:8080');
+            const response = await fetch(`${apiBaseUrl}/api/upload`, {
+              method: "POST",
+              body: formData,
+              headers: {
+                "Authorization": `Bearer ${localStorage.getItem("token")}`
+              }
+            });
+            const data = await response.json();
+            if (data.url) {
+              const url = apiBaseUrl + data.url;
+              editor.chain().focus().setImage({ src: url }).run();
+            }
+          } catch (error) {
+            console.error("Image upload failed", error);
+          }
+        }
+      };
+      input.click();
+    },
+  },
 ];
 
 interface SlashCommandMenuProps {
@@ -272,8 +318,20 @@ export function SlashCommandMenu({ editor, onAiAction }: SlashCommandMenuProps) 
         // Position the dropdown relative to editor
         const coords = editor.view.coordsAtPos(from);
         const editorRect = editor.view.dom.getBoundingClientRect();
+        
+        // Calculate available space below
+        const spaceBelow = window.innerHeight - coords.bottom;
+        const menuHeight = 320; // max-h-80 is 320px
+        
+        let top = coords.bottom - editorRect.top + 4;
+        
+        // If not enough space below, show it above the cursor
+        if (spaceBelow < menuHeight && coords.top > menuHeight) {
+          top = coords.top - editorRect.top - menuHeight - 4;
+        }
+
         setPosition({
-          top: coords.bottom - editorRect.top + 4,
+          top,
           left: coords.left - editorRect.left,
         });
       } else {

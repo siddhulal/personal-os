@@ -245,6 +245,15 @@ public class AiGenerateService {
                     "Generate a quiz (5 questions) based on the following text. " +
                     "Include a mix of multiple choice and short answer questions. " +
                     "Provide answers at the end. Use markdown formatting:\n\n" + workingText;
+            case "generate_diagram" -> contextPrefix +
+                    "Create a clear Mermaid.js diagram that explains the following concepts visually. " +
+                    "Use 'flowchart TD', 'sequenceDiagram', or 'mindmap' as appropriate. " +
+                    "IMPORTANT Mermaid syntax rules for reliability:\n" +
+                    "- Use ONLY square brackets for node labels: A[Label Text]\n" +
+                    "- If a label contains special characters like ( ) & < > , . - : , wrap the label in double quotes: A[\"Label (Text)\"]\n" +
+                    "- Do NOT use semicolons at end of lines\n" +
+                    "- Return ONLY the Mermaid code block starting with ```mermaid and ending with ```.\n\n" +
+                    "Text:\n" + workingText;
             default -> contextPrefix + "Process the following text:\n\n" + workingText;
         };
 
@@ -467,6 +476,10 @@ public class AiGenerateService {
                 .build();
 
         String response = provider.complete(request);
+        if (response == null) {
+            log.error("AI provider {} returned null response", settings.getActiveProvider());
+            return "Error: AI provider returned no response.";
+        }
         // Strip <think>...</think> tags from models that use chain-of-thought (e.g. qwen3)
         return response.replaceAll("(?s)<think>.*?</think>", "").trim();
     }

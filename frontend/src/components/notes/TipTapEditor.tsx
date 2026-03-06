@@ -7,6 +7,10 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import Underline from "@tiptap/extension-underline";
+import Image from "@tiptap/extension-image";
+import Gapcursor from "@tiptap/extension-gapcursor";
+import { Extension } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { common, createLowlight } from "lowlight";
 import { createMermaidCodeBlock } from "./MermaidCodeBlock";
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -17,12 +21,14 @@ import {
   FileText,
   ListCollapse,
   ClipboardList,
+  Image as ImageIcon,
 } from "lucide-react";
 import { WikiLink } from "./WikiLinkExtension";
 import { WikiLinkSuggestion } from "./WikiLinkSuggestion";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { BubbleToolbar } from "./BubbleToolbar";
 import { Callout } from "./CalloutExtension";
+import { Button } from "@/components/ui/button";
 import { AiResultDialog } from "@/components/ai/AiResultDialog";
 import { noteAssist } from "@/lib/api/ai";
 import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
@@ -37,6 +43,28 @@ const NOTE_AI_ACTIONS = [
   { label: "Summarize", action: "summarize", icon: ListCollapse },
   { label: "Generate Quiz", action: "generate_quiz", icon: ClipboardList },
 ];
+
+/**
+ * Custom extension to ensure there's always an empty paragraph at the end of the document.
+ */
+const TrailingNode = Extension.create({
+  name: "trailingNode",
+  addProseMirrorPlugins() {
+    const plugin = new Plugin({
+      key: new PluginKey("trailingNode"),
+      appendTransaction: (transactions, oldState, newState) => {
+        const { doc, tr } = newState;
+        const lastNode = doc.lastChild;
+        if (lastNode && lastNode.type.name !== "paragraph") {
+          const type = newState.schema.nodes.paragraph;
+          return tr.insert(doc.content.size, type.create());
+        }
+        return null;
+      },
+    });
+    return [plugin];
+  },
+});
 
 interface TipTapEditorProps {
   content: string | null;
@@ -63,6 +91,7 @@ export function TipTapEditor({
       const actionLabels: Record<string, string> = {
         continue: "Continue Writing",
         generate_example: "Generate Example",
+        generate_diagram: "Generate Diagram",
         explain: "Explain",
         add_details: "Add Details",
         summarize: "Summarize",
@@ -97,6 +126,13 @@ export function TipTapEditor({
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         codeBlock: false, // Replaced by CodeBlockLowlight
+      }),
+      Gapcursor,
+      TrailingNode,
+      Image.configure({
+        HTMLAttributes: {
+          class: "rounded-lg border border-border shadow-sm max-w-full h-auto my-4",
+        },
       }),
       createMermaidCodeBlock(lowlight),
       Link.configure({
@@ -174,24 +210,68 @@ export function TipTapEditor({
   function handleInsertAtCursor() {
     if (!editor) return;
     const { from } = editor.state.selection;
-    editor.chain().focus().insertContentAt(from, aiResultContent).run();
+    // Convert markdown to HTML so TipTap parses it into proper nodes (code blocks, etc.)
+    const htmlContent = markdownFencesToHtml(aiResultContent);
+    editor.chain().focus().insertContentAt(from, htmlContent).run();
     setAiResultOpen(false);
   }
 
   function handleInsertAtEnd() {
     if (!editor) return;
     const endPos = editor.state.doc.content.size;
-    editor.chain().focus().insertContentAt(endPos, "\n\n" + aiResultContent).run();
+    // Convert markdown to HTML so TipTap parses it into proper nodes
+    const htmlContent = markdownFencesToHtml(aiResultContent);
+    editor.chain().focus().insertContentAt(endPos, "\n\n" + htmlContent).run();
     setAiResultOpen(false);
   }
 
   return (
-    <div className="overflow-hidden bg-background relative">
+    <div className="bg-background relative">
       <div className="relative">
         <EditorContent editor={editor} />
         <BubbleToolbar editor={editor} />
         <WikiLinkSuggestion editor={editor} />
         <SlashCommandMenu editor={editor} onAiAction={handleAiAction} />
+        <div className="absolute top-2 right-2 flex gap-2 z-10">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = "image/*";
+              input.onchange = async () => {
+                if (input.files?.length) {
+                  const file = input.files[0];
+                  const formData = new FormData();
+                  formData.append("file", file);
+                  try {
+                    const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://localhost:8080');
+                    const response = await fetch(`${apiBaseUrl}/api/upload`, {
+                      method: "POST",
+                      body: formData,
+                      headers: {
+                        "Authorization": `Bearer ${localStorage.getItem("token")}`
+                      }
+                    });
+                    const data = await response.json();
+                    if (data.url) {
+                      const url = apiBaseUrl + data.url;
+                      editor.chain().focus().setImage({ src: url }).run();
+                    }
+                  } catch (error) {
+                    console.error("Image upload failed", error);
+                  }
+                }
+              };
+              input.click();
+            }}
+            className="h-8 w-8 p-0"
+            title="Attach Image"
+          >
+            <ImageIcon className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       <AiResultDialog

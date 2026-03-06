@@ -4,23 +4,7 @@ import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer } from "@tiptap
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Eye, Code, ZoomIn, ZoomOut, RotateCcw, Download, Maximize2, Minimize2, Move } from "lucide-react";
-
-/** Sanitize mermaid code: expand one-liners and ensure directives are on their own lines */
-function sanitizeMermaid(code: string): string {
-  let result = code;
-  // Expand semicolons to newlines if it's a one-liner
-  if (!result.includes("\n") && result.includes(";")) {
-    result = result.replace(/;\s*/g, "\n");
-  }
-  // Ensure graph/flowchart declaration is on its own line
-  result = result.replace(/^((?:graph|flowchart)\s+(?:TD|TB|BT|RL|LR))\s+/, "$1\n");
-  // Put style / classDef / linkStyle / class directives on their own lines
-  result = result.replace(/\s+(style\s)/g, "\n$1");
-  result = result.replace(/\s+(classDef\s)/g, "\n$1");
-  result = result.replace(/\s+(linkStyle\s)/g, "\n$1");
-  result = result.replace(/\s+(class\s)/g, "\n$1");
-  return result.trim();
-}
+import { sanitizeMermaid } from "@/lib/mermaid-utils";
 
 function MermaidPreview({ code, fullscreen, onToggleFullscreen }: {
   code: string;
@@ -67,11 +51,13 @@ function MermaidPreview({ code, fullscreen, onToggleFullscreen }: {
     return () => { cancelled = true; };
   }, [code]);
 
-  // Mouse wheel zoom
+  // Mouse wheel zoom - only if Ctrl/Cmd is held to prevent accidental zooming while scrolling
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setZoom((z) => Math.max(0.2, Math.min(5, z + delta)));
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom((z) => Math.max(0.2, Math.min(5, z + delta)));
+    }
   }, []);
 
   // Pan handlers

@@ -45,33 +45,57 @@ public class GeminiProvider implements AiProvider {
         Map<String, Object> body = buildRequestBody(request);
 
         try {
+            // Using manual URI construction to prevent slash encoding
+            String uri = "/v1beta/" + model + ":generateContent?key=" + key;
+            log.info("Sending request to Gemini API. URI: {}", uri);
+            
             String response = webClient.post()
-                    .uri("/v1beta/{model}:generateContent?key={key}", model, key)
+                    .uri(uri)
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(body)
                     .retrieve()
                     .onStatus(status -> status.isError(), clientResponse -> 
                         clientResponse.bodyToMono(String.class).flatMap(errorBody -> {
                             log.error("Gemini API error: {} - {}", clientResponse.statusCode(), errorBody);
-                            return Mono.error(new RuntimeException("Gemini API error: " + errorBody));
+                            return Mono.error(new RuntimeException("Gemini API error status " + clientResponse.statusCode() + ": " + errorBody));
                         })
                     )
                     .bodyToMono(String.class)
+                    .timeout(java.time.Duration.ofSeconds(60))
                     .block();
+
+            if (response == null || response.isBlank()) {
+                log.error("Gemini API returned null or blank response body for model: {}", model);
+                return "Error: Received empty response from Gemini API. Please check your network or API key.";
+            }
 
             JsonNode node = objectMapper.readTree(response);
             JsonNode candidates = node.path("candidates");
             if (candidates.isArray() && !candidates.isEmpty()) {
-                JsonNode parts = candidates.get(0).path("content").path("parts");
+                JsonNode candidate = candidates.get(0);
+                
+                // Check for finish reason
+                if (candidate.has("finishReason") && !"STOP".equals(candidate.path("finishReason").asText())) {
+                    String reason = candidate.path("finishReason").asText();
+                    log.warn("Gemini generation finished with reason: {}", reason);
+                    if ("SAFETY".equals(reason)) return "Error: Response was blocked by Gemini safety filters.";
+                }
+
+                JsonNode parts = candidate.path("content").path("parts");
                 if (parts.isArray() && !parts.isEmpty()) {
                     return parts.get(0).path("text").asText("");
                 }
             }
+            
+            if (node.has("promptFeedback") && node.path("promptFeedback").has("blockReason")) {
+                return "Error: Request blocked by Gemini safety filters: " + node.path("promptFeedback").path("blockReason").asText();
+            }
+
             log.error("Unexpected Gemini response structure: {}", response);
-            return "Error: Received empty or malformed response from Gemini.";
+            return "Error: Gemini returned a successful response but no text was generated.";
         } catch (Exception e) {
-            log.error("Failed to call Gemini API or parse response", e);
-            return "Error: " + e.getMessage();
+            log.error("Gemini Provider Exception for model {}: {}", model, e.getMessage());
+            return "Error calling Gemini: " + e.getMessage();
         }
     }
 
@@ -84,8 +108,11 @@ public class GeminiProvider implements AiProvider {
         String key = request.getApiKey() != null && !request.getApiKey().isBlank() ? request.getApiKey() : apiKey;
         Map<String, Object> body = buildRequestBody(request);
 
+        String uri = "/v1beta/" + model + ":streamGenerateContent?alt=sse&key=" + key;
+        log.info("Sending streaming request to Gemini API. URI: {}", uri);
+
         return webClient.post()
-                .uri("/v1beta/{model}:streamGenerateContent?alt=sse&key={key}", model, key)
+                .uri(uri)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(body)
                 .retrieve()
@@ -109,7 +136,7 @@ public class GeminiProvider implements AiProvider {
         String key = (apiKeyOverride != null && !apiKeyOverride.isBlank()) ? apiKeyOverride : apiKey;
         try {
             String response = webClient.get()
-                    .uri("/v1beta/models?key={key}", key)
+                    .uri("/v1beta/models?key=" + key)
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
@@ -120,10 +147,9 @@ public class GeminiProvider implements AiProvider {
             if (modelsNode.isArray()) {
                 for (JsonNode m : modelsNode) {
                     String name = m.path("name").asText();
-                    if (name.startsWith("models/")) {
-                        name = name.substring(7);
+                    if (!name.startsWith("models/")) {
+                        name = "models/" + name;
                     }
-                    // Filter for models that support generateContent
                     JsonNode methods = m.path("supportedGenerationMethods");
                     boolean supported = false;
                     if (methods.isArray()) {
@@ -142,33 +168,61 @@ public class GeminiProvider implements AiProvider {
             return models;
         } catch (Exception e) {
             log.error("Failed to list Gemini models", e);
-            return List.of("gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro");
+            return List.of("models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.0-pro");
         }
     }
 
     private Map<String, Object> buildRequestBody(AiRequest request) {
         Map<String, Object> body = new HashMap<>();
-
         List<Map<String, Object>> contents = new ArrayList<>();
 
+        StringBuilder combinedUserText = new StringBuilder();
         if (request.getSystemPrompt() != null && !request.getSystemPrompt().isBlank()) {
-            body.put("systemInstruction", Map.of(
-                    "parts", List.of(Map.of("text", request.getSystemPrompt()))
-            ));
+            combinedUserText.append(request.getSystemPrompt()).append("\n\n");
         }
 
         for (AiMessage msg : request.getMessages()) {
             String role = msg.getRole().equals("assistant") ? "model" : "user";
-            contents.add(Map.of(
-                    "role", role,
-                    "parts", List.of(Map.of("text", msg.getContent()))
+            
+            if (role.equals("user")) {
+                if (combinedUserText.length() > 0) combinedUserText.append("---\n");
+                combinedUserText.append(msg.getContent());
+            } else {
+                if (combinedUserText.length() > 0) {
+                    contents.add(Map.of("role", "user", "parts", List.of(Map.of("text", combinedUserText.toString()))));
+                    combinedUserText.setLength(0);
+                }
+                contents.add(Map.of("role", "model", "parts", List.of(Map.of("text", msg.getContent()))));
+            }
+        }
+        
+        if (combinedUserText.length() > 0) {
+            contents.add(Map.of("role", "user", "parts", List.of(Map.of("text", combinedUserText.toString()))));
+        }
+
+        if (contents.isEmpty()) {
+            contents.add(Map.of("role", "user", "parts", List.of(Map.of("text", "Continue writing based on context."))));
+        }
+
+        body.put("contents", contents);
+        
+        // --- ADD SAFETY SETTINGS ---
+        List<Map<String, String>> safetySettings = new ArrayList<>();
+        String[] categories = {
+            "HARM_CATEGORY_HARASSMENT",
+            "HARM_CATEGORY_HATE_SPEECH",
+            "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            "HARM_CATEGORY_DANGEROUS_CONTENT"
+        };
+        for (String category : categories) {
+            safetySettings.add(Map.of(
+                "category", category,
+                "threshold", "BLOCK_NONE"
             ));
         }
-        body.put("contents", contents);
+        body.put("safetySettings", safetySettings);
 
-        body.put("generationConfig", Map.of(
-                "temperature", request.getTemperature()
-        ));
+        body.put("generationConfig", Map.of("temperature", request.getTemperature()));
 
         return body;
     }

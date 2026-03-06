@@ -26,16 +26,17 @@ export function AiResultDialog({
   open,
   onOpenChange,
   title,
-  content,
+  content = "",
   isLoading,
   onCancel,
   actions,
 }: AiResultDialogProps) {
   const [copied, setCopied] = useState(false);
-  const hasDiagram = content.includes("```mermaid");
+  const safeContent = content || "";
+  const hasDiagram = safeContent.includes("```mermaid");
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(content);
+    navigator.clipboard.writeText(safeContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -82,7 +83,7 @@ export function AiResultDialog({
                   },
                 }}
               >
-                {content}
+                {safeContent}
               </ReactMarkdown>
             </div>
             <div className="flex items-center gap-2 pt-4 border-t">
