@@ -16,10 +16,18 @@ import {
   Check,
   X,
   PanelLeftClose,
+  MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -233,15 +241,13 @@ export function NotebookSidebar({
           />
         </div>
         {onOpenDailyNote && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full justify-start gap-2 text-sm border-dashed border-primary/40 hover:border-primary/60 hover:bg-primary/5 transition-all duration-150"
+          <button
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-primary bg-primary/[0.06] border border-primary/[0.12] hover:bg-primary/[0.12] transition-all duration-150"
             onClick={onOpenDailyNote}
           >
-            <CalendarDays className="h-4 w-4 text-primary/70" />
+            <CalendarDays className="h-4 w-4" />
             Today&apos;s Note
-          </Button>
+          </button>
         )}
       </div>
 
@@ -289,17 +295,36 @@ export function NotebookSidebar({
                     <Book className="h-4 w-4 shrink-0" style={{ color: notebook.color }} />
                     <span className="truncate font-medium">{notebook.name}</span>
                   </button>
-                  <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 mr-1 transition-opacity duration-150">
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setRenamingNotebookId(notebook.id); setRenamingNotebookName(notebook.name); }} title="Rename">
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleAddSection(notebook.id)} title="Add Section">
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => setConfirmDeleteNotebook(notebook)} title="Delete Notebook">
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 mr-1 shrink-0 transition-opacity duration-150"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem onClick={() => { setRenamingNotebookId(notebook.id); setRenamingNotebookName(notebook.name); }}>
+                        <Pencil className="h-3.5 w-3.5 mr-2" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAddSection(notebook.id)}>
+                        <Plus className="h-3.5 w-3.5 mr-2" />
+                        Add Section
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setConfirmDeleteNotebook(notebook)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </>
               )}
             </div>
@@ -307,7 +332,7 @@ export function NotebookSidebar({
             {expandedNotebooks.has(notebook.id) && (
               <div className="ml-4 mt-0.5 space-y-0.5">
                 {notebook.sections.map((section: Section) => (
-                  <div key={section.id} className="flex items-center group/section">
+                  <div key={section.id}>
                     {renamingSectionId === section.id ? (
                       <div className="flex items-center gap-1 flex-1 px-1 py-0.5">
                         <Input
@@ -330,7 +355,7 @@ export function NotebookSidebar({
                         </Button>
                       </div>
                     ) : (
-                      <>
+                      <div className="flex items-center flex-1 group/section">
                         <button
                           className={cn(
                             "flex items-center gap-1.5 flex-1 text-left px-2 py-1 text-sm rounded-lg transition-all duration-150",
@@ -349,16 +374,33 @@ export function NotebookSidebar({
                           <span className="truncate">{section.name}</span>
                           <span className="ml-auto text-xs opacity-60">{section.pageCount}</span>
                         </button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 opacity-0 group-hover/section:opacity-100 text-destructive hover:text-destructive mr-1 transition-opacity duration-150"
-                          onClick={() => setConfirmDeleteSection(section)}
-                          title="Delete Section"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 opacity-0 group-hover/section:opacity-100 mr-1 shrink-0 transition-opacity duration-150"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreHorizontal className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-36">
+                            <DropdownMenuItem onClick={() => { setRenamingSectionId(section.id); setRenamingSectionName(section.name); }}>
+                              <Pencil className="h-3.5 w-3.5 mr-2" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setConfirmDeleteSection(section)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     )}
                   </div>
                 ))}

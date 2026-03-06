@@ -28,6 +28,7 @@ import type { Tag, Note } from "@/types";
 interface TagPanelProps {
   note: Note;
   onUpdate?: () => void;
+  inline?: boolean;
 }
 
 const TAG_COLORS = [
@@ -35,7 +36,7 @@ const TAG_COLORS = [
   "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899",
 ];
 
-export function TagPanel({ note, onUpdate }: TagPanelProps) {
+export function TagPanel({ note, onUpdate, inline }: TagPanelProps) {
   const queryClient = useQueryClient();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
@@ -86,8 +87,8 @@ export function TagPanel({ note, onUpdate }: TagPanelProps) {
   );
 
   return (
-    <div className="px-6 py-1 flex items-center gap-1.5 flex-wrap">
-      <Tags className="h-3 w-3 text-muted-foreground shrink-0" />
+    <div className={inline ? "flex items-center gap-1.5 flex-wrap" : "px-6 py-1 flex items-center gap-1.5 flex-wrap"}>
+      {!inline && <Tags className="h-3 w-3 text-muted-foreground shrink-0" />}
       {note.tags?.map((tag) => (
         <Badge
           key={tag.id}

@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileText, Plus, Trash2, MoveRight, MoreHorizontal, GripVertical, PanelLeftClose } from "lucide-react";
+import { FileText, Plus, Trash2, MoveRight, MoreHorizontal, PanelLeftClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -131,6 +131,17 @@ export function SectionPageList({
       month: "short",
       day: "numeric",
     });
+  }
+
+  function getPreview(page: Note): string {
+    const text = page.content || "";
+    if (!text) return "";
+    return text.slice(0, 120).replace(/\s+/g, " ").trim();
+  }
+
+  function getWordCount(page: Note): number {
+    const text = page.content || "";
+    return text.trim().split(/\s+/).filter(Boolean).length;
   }
 
   function openMoveDialog(page: Note) {
@@ -264,57 +275,78 @@ export function SectionPageList({
               onDragEnd={handleDragEnd}
               onDragOver={(e) => handleDragOver(e, idx)}
               className={cn(
-                "flex items-center group rounded-lg transition-all duration-150",
+                "group rounded-xl transition-all duration-200 relative cursor-grab active:cursor-grabbing",
                 selectedPageId === page.id
-                  ? "bg-primary/10 shadow-sm ring-1 ring-primary/15"
-                  : "hover:bg-accent/50",
+                  ? "bg-muted/80 border border-border/60 shadow-sm"
+                  : "hover:bg-accent/40 border border-transparent",
                 draggedPageId === page.id && "opacity-40",
-                "cursor-grab active:cursor-grabbing"
               )}
             >
-              {/* Drag handle */}
-              <div className="pl-1.5 pr-0 py-2 opacity-0 group-hover:opacity-40 hover:!opacity-100 cursor-grab active:cursor-grabbing shrink-0 touch-none">
-                <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
-              </div>
+              {/* Active accent bar */}
+              {selectedPageId === page.id && (
+                <div className="absolute left-0 top-2.5 bottom-2.5 w-0.5 bg-primary rounded-r" />
+              )}
 
               <button
-                className="flex-1 text-left px-2 py-2 min-w-0"
+                className="flex-1 w-full text-left p-3 min-w-0"
                 onClick={() => onSelectPage(page.id)}
               >
                 <p className={cn(
-                  "text-sm truncate",
-                  selectedPageId === page.id ? "text-primary font-medium" : "text-foreground"
+                  "text-[13px] font-semibold truncate leading-snug",
+                  selectedPageId === page.id ? "text-foreground" : "text-foreground/90"
                 )}>
                   {page.title || "Untitled"}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">{formatDate(page.updatedAt)}</p>
+                {getPreview(page) && (
+                  <p className="text-xs text-muted-foreground/60 mt-1 line-clamp-2 leading-relaxed">
+                    {getPreview(page)}
+                  </p>
+                )}
+                <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-muted-foreground/40 font-medium">
+                  <span>{formatDate(page.updatedAt)}</span>
+                  <span>&middot;</span>
+                  <span>{getWordCount(page)} words</span>
+                  {page.tags?.slice(0, 2).map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="px-1.5 py-0 rounded text-[10px] font-medium"
+                      style={{ background: `${tag.color}10`, color: tag.color }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
               </button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 mr-1 shrink-0 transition-opacity duration-150"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="h-3.5 w-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-36">
-                  <DropdownMenuItem onClick={() => openMoveDialog(page)}>
-                    <MoveRight className="h-3.5 w-3.5 mr-2" />
-                    Move to...
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => setConfirmDeletePage(page)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+
+              {/* Context menu */}
+              <div className="absolute top-2 right-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-36">
+                    <DropdownMenuItem onClick={() => openMoveDialog(page)}>
+                      <MoveRight className="h-3.5 w-3.5 mr-2" />
+                      Move to...
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setConfirmDeletePage(page)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
 
             {/* Drop indicator line below the last item */}

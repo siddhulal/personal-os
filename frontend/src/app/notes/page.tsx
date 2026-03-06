@@ -245,8 +245,8 @@ export default function NotesPage() {
       {selectedPageId && selectedPage ? (
         <>
           {/* Editor header */}
-          <div className="border-b border-border/50 bg-card/30 px-4 py-2 shrink-0 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1 text-sm text-muted-foreground min-w-0 overflow-hidden">
+          <div className="border-b border-border/30 px-6 py-2.5 shrink-0 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60 min-w-0 overflow-hidden">
               {!fullscreen && (
                 <>
                   {currentNotebook && (
@@ -254,23 +254,20 @@ export default function NotesPage() {
                   )}
                   {currentSection && (
                     <>
-                      <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+                      <ChevronRight className="h-3 w-3 shrink-0 opacity-40" />
                       <span className="truncate">{currentSection.name}</span>
                     </>
                   )}
                   {(currentNotebook || currentSection) && (
-                    <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+                    <ChevronRight className="h-3 w-3 shrink-0 opacity-40" />
                   )}
+                  <span className="text-muted-foreground/80 font-medium truncate">
+                    {editingTitle || "Untitled"}
+                  </span>
                 </>
               )}
-              <span className="text-2xl font-bold tracking-tight text-foreground truncate">
-                {editingTitle || "Untitled"}
-              </span>
               {updatePageMutation.isPending && (
                 <span className="text-primary text-xs ml-2">Saving...</span>
-              )}
-              {selectedPage.isDailyNote && (
-                <span className="text-primary text-xs font-medium ml-2">Daily</span>
               )}
             </div>
             <div className="flex items-center gap-1 shrink-0">
@@ -329,41 +326,58 @@ export default function NotesPage() {
             </div>
           </div>
 
-          {/* Title input */}
-          <div className="px-6 pt-4 shrink-0">
-            <Input
-              value={editingTitle}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Page title"
-              className="border-0 text-xl font-semibold px-0 h-auto focus-visible:ring-0 shadow-none"
-            />
-          </div>
-
-          {/* Tags */}
-          <TagPanel note={selectedPage} />
-
-          {/* Backlinks (inline under title) */}
-          <BacklinksPanel
-            noteId={selectedPageId}
-            onNavigate={handleNavigateToNote}
-          />
-
-          {/* Editor */}
+          {/* Editor scrollable area */}
           <div className="flex-1 overflow-y-auto">
-            <TipTapEditor
-              content={editorContent}
-              onUpdate={handleEditorUpdate}
-              onNavigateToNote={handleNavigateToNote}
-            />
+            <div className="w-full px-8">
+              {/* Title input */}
+              <div className="pt-10">
+                <Input
+                  value={editingTitle}
+                  onChange={(e) => handleTitleChange(e.target.value)}
+                  placeholder="Page title"
+                  className="border-0 text-[32px] font-bold tracking-tight px-0 h-auto focus-visible:ring-0 shadow-none leading-tight"
+                />
+              </div>
+
+              {/* Subtitle row: date + tags */}
+              <div className="flex items-center gap-2 mt-1 pb-5 mb-7 border-b border-border/30">
+                <span className="text-xs text-muted-foreground/50 font-medium">
+                  {new Date(selectedPage.updatedAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </span>
+                {selectedPage.isDailyNote && (
+                  <span className="text-xs font-medium text-primary/70 bg-primary/5 px-2 py-0.5 rounded">Daily</span>
+                )}
+                <TagPanel note={selectedPage} inline />
+              </div>
+
+              {/* Backlinks */}
+              <BacklinksPanel
+                noteId={selectedPageId}
+                onNavigate={handleNavigateToNote}
+              />
+
+              {/* Editor */}
+              <div className="pb-32">
+                <TipTapEditor
+                  content={editorContent}
+                  onUpdate={handleEditorUpdate}
+                  onNavigateToNote={handleNavigateToNote}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Footer */}
-          <div className="border-t border-border/30 px-4 py-1.5 shrink-0 flex items-center justify-between text-xs text-muted-foreground/70">
+          <div className="border-t border-border/20 px-6 py-2 shrink-0 flex items-center justify-between text-[11px] text-muted-foreground/40 font-medium">
             <span>
-              {wordCount.words} words &middot; {wordCount.chars} characters
+              {wordCount.words} words &middot; {wordCount.chars.toLocaleString()} characters
             </span>
             <span>
-              Last saved: {new Date(selectedPage.updatedAt).toLocaleTimeString()}
+              Saved &middot; {new Date(selectedPage.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
             </span>
           </div>
 

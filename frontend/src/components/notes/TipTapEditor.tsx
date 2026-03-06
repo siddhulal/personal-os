@@ -155,7 +155,7 @@ export function TipTapEditor({
     editorProps: {
       attributes: {
         class:
-          "tiptap prose prose-sm max-w-none focus:outline-none min-h-[400px] px-4 py-3",
+          "tiptap prose max-w-none focus:outline-none min-h-[400px] px-6 py-4",
       },
     },
     onUpdate: ({ editor }) => {

@@ -27,21 +27,26 @@ function MermaidPreview({ code, fullscreen, onToggleFullscreen }: {
     async function render() {
       try {
         const mermaid = (await import("mermaid")).default;
+        const isDark = document.documentElement.classList.contains("dark");
         mermaid.initialize({
           startOnLoad: false,
-          theme: "default",
+          theme: isDark ? "dark" : "default",
           securityLevel: "loose",
+          flowchart: { useMaxWidth: true },
         });
         const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const cleaned = sanitizeMermaid(code);
+        // Clean up any orphaned mermaid error elements from previous failed renders
+        document.querySelectorAll(`#d${id}`).forEach((el) => el.remove());
         const { svg: rendered } = await mermaid.render(id, cleaned);
         if (!cancelled) {
           setSvg(rendered);
           setError("");
         }
-      } catch (err) {
+      } catch (err: any) {
         if (!cancelled) {
-          setError("Failed to render diagram");
+          const msg = err?.message || err?.str || String(err);
+          setError(msg.length > 200 ? msg.slice(0, 200) + "..." : msg);
           console.error("Mermaid render error:", err);
         }
       }

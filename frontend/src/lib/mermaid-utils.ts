@@ -32,15 +32,27 @@ export function sanitizeMermaid(code: string): string {
     .map((line) => {
       const trimmed = line.trim();
       
-      // Skip directive / style / empty lines
+      // Skip directive / style / structural / empty lines
       if (
         !trimmed ||
         trimmed.startsWith("%%") ||
         trimmed.startsWith("graph ") ||
         trimmed.startsWith("flowchart ") ||
+        trimmed.startsWith("sequenceDiagram") ||
+        trimmed.startsWith("classDiagram") ||
+        trimmed.startsWith("stateDiagram") ||
+        trimmed.startsWith("erDiagram") ||
+        trimmed.startsWith("gantt") ||
+        trimmed.startsWith("pie") ||
+        trimmed.startsWith("gitgraph") ||
         trimmed.startsWith("classDef ") ||
+        trimmed.startsWith("class ") ||
         trimmed.startsWith("style ") ||
-        trimmed.startsWith("linkStyle ")
+        trimmed.startsWith("linkStyle ") ||
+        trimmed.startsWith("subgraph ") ||
+        trimmed.startsWith("subgraph\t") ||
+        trimmed === "end" ||
+        trimmed.startsWith("direction ")
       ) {
         // Remove trailing semicolons on style lines
         return line.replace(/;\s*$/, "");
