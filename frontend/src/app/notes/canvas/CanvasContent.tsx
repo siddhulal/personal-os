@@ -617,9 +617,14 @@ function CanvasEngine() {
         <Button
           variant="outline"
           size="sm"
-          onClick={onDeleteSelected}
+          onClick={() => {
+            if (!hasSelection) {
+              toast.info("Select nodes or edges to delete");
+              return;
+            }
+            onDeleteSelected();
+          }}
           className="h-8 text-xs font-medium border-destructive/50 text-destructive hover:text-destructive hover:bg-destructive/10"
-          disabled={!hasSelection}
         >
           <Trash2 className="h-3.5 w-3.5 mr-1.5" />
           Delete
