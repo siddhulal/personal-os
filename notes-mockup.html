@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notes UI Mockup — Dark Mode</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-base: #09090b;
+    --bg-surface: #0f0f12;
+    --bg-elevated: #18181b;
+    --bg-hover: #1f1f23;
+    --bg-active: rgba(99, 102, 241, 0.08);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-subtle: rgba(255, 255, 255, 0.04);
+    --text-primary: #fafafa;
+    --text-secondary: #a1a1aa;
+    --text-muted: #52525b;
+    --text-faint: #3f3f46;
+    --accent: #6366f1;
+    --accent-dim: rgba(99, 102, 241, 0.15);
+    --accent-glow: rgba(99, 102, 241, 0.06);
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --purple: #8b5cf6;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ─── Layout ────────────────────────────────────────── */
+  .app {
+    display: flex;
+    height: 100vh;
+  }
+
+  /* ─── Left Sidebar (App Nav) ────────────────────────── */
+  .nav-sidebar {
+    width: 200px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 16px 0;
+    flex-shrink: 0;
+  }
+
+  .nav-logo {
+    padding: 0 16px 20px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 0;
+    position: relative;
+  }
+
+  .nav-item:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+  }
+
+  .nav-item.active {
+    color: var(--text-primary);
+    background: var(--bg-active);
+  }
+
+  .nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .nav-icon {
+    width: 16px;
+    height: 16px;
+    opacity: 0.5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .nav-item.active .nav-icon { opacity: 0.9; }
+
+  .nav-bottom {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ─── Notebooks Panel ───────────────────────────────── */
+  .notebooks-panel {
+    width: 240px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .panel-header {
+    padding: 16px 16px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+
+  .panel-actions {
+    display: flex;
+    gap: 2px;
+  }
+
+  .panel-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+
+  .panel-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+  }
+
+  .search-box {
+    margin: 0 12px 12px;
+    padding: 7px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    width: calc(100% - 24px);
+    transition: border-color 0.15s;
+  }
+
+  .search-box:focus {
+    border-color: var(--accent);
+  }
+
+  .search-box::placeholder {
+    color: var(--text-faint);
+  }
+
+  .daily-note-btn {
+    margin: 0 12px 12px;
+    padding: 8px 12px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(99, 102, 241, 0.12);
+    border-radius: 8px;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.15s;
+    width: calc(100% - 24px);
+  }
+
+  .daily-note-btn:hover {
+    background: var(--accent-dim);
+  }
+
+  .notebook-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px;
+  }
+
+  .notebook-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .notebook-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  .notebook-item.expanded {
+    color: var(--text-primary);
+  }
+
+  .notebook-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .notebook-chevron {
+    font-size: 10px;
+    color: var(--text-faint);
+    transition: transform 0.15s;
+    margin-left: auto;
+  }
+
+  .notebook-item.expanded .notebook-chevron {
+    transform: rotate(90deg);
+  }
+
+  .section-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 6px 28px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .section-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+  }
+
+  .section-item.active {
+    color: var(--text-primary);
+    background: var(--bg-active);
+  }
+
+  .section-count {
+    margin-left: auto;
+    font-size: 10px;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+
+  /* ─── Pages Panel ───────────────────────────────────── */
+  .pages-panel {
+    width: 280px;
+    background: var(--bg-base);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .pages-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+  }
+
+  .page-card {
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 2px;
+    border: 1px solid transparent;
+    position: relative;
+  }
+
+  .page-card:hover {
+    background: var(--bg-hover);
+  }
+
+  .page-card.active {
+    background: var(--bg-elevated);
+    border-color: var(--border);
+    box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.08);
+  }
+
+  .page-card.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .page-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+
+  .page-preview {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+
+  .page-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-faint);
+    font-weight: 500;
+  }
+
+  .page-tag {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--accent-glow);
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  /* ─── Editor Panel ──────────────────────────────────── */
+  .editor-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--bg-base);
+  }
+
+  .editor-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .breadcrumb-sep {
+    color: var(--text-faint);
+    font-size: 10px;
+  }
+
+  .breadcrumb-current {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .editor-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .action-btn {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+
+  .action-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+  }
+
+  /* ─── Editor Content ────────────────────────────────── */
+  .editor-scroll {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    justify-content: center;
+  }
+
+  .editor-content {
+    width: 100%;
+    max-width: 720px;
+    padding: 40px 24px 120px;
+  }
+
+  .editor-title {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    border: none;
+    outline: none;
+    background: none;
+    width: 100%;
+    font-family: inherit;
+  }
+
+  .editor-subtitle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .editor-date {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .tag-pill.purple {
+    background: rgba(139, 92, 246, 0.1);
+    color: #a78bfa;
+    border-left: 2px solid #8b5cf6;
+  }
+
+  .tag-pill.blue {
+    background: rgba(59, 130, 246, 0.1);
+    color: #60a5fa;
+    border-left: 2px solid #3b82f6;
+  }
+
+  /* ─── Rich Text Content ─────────────────────────────── */
+  .prose h2 {
+    font-size: 22px;
+    font-weight: 650;
+    color: var(--text-primary);
+    margin-top: 32px;
+    margin-bottom: 12px;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+
+  .prose p {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+
+  .prose strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .prose ul {
+    padding-left: 20px;
+    margin-bottom: 12px;
+  }
+
+  .prose li {
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+
+  .prose li::marker {
+    color: var(--text-faint);
+  }
+
+  .prose code {
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #f0abfc;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .prose a, .wiki-link {
+    color: var(--accent);
+    text-decoration: none;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--accent-glow);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .prose a:hover, .wiki-link:hover {
+    background: var(--accent-dim);
+  }
+
+  .prose blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 8px 16px;
+    margin: 16px 0;
+    background: var(--accent-glow);
+    border-radius: 0 8px 8px 0;
+    color: var(--text-secondary);
+    font-size: 15px;
+    font-style: italic;
+  }
+
+  /* ─── Callout Block ─────────────────────────────────── */
+  .callout {
+    padding: 14px 16px;
+    border-radius: 10px;
+    margin: 16px 0;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .callout.tip {
+    background: rgba(34, 197, 94, 0.06);
+    border: 1px solid rgba(34, 197, 94, 0.12);
+    color: #86efac;
+  }
+
+  .callout.info {
+    background: rgba(59, 130, 246, 0.06);
+    border: 1px solid rgba(59, 130, 246, 0.12);
+    color: #93c5fd;
+  }
+
+  .callout-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ─── Code Block ────────────────────────────────────── */
+  .code-block {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin: 16px 0;
+    overflow: hidden;
+  }
+
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .code-body {
+    padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    overflow-x: auto;
+  }
+
+  .code-body .kw { color: #c084fc; }
+  .code-body .type { color: #67e8f9; }
+  .code-body .str { color: #86efac; }
+  .code-body .comment { color: var(--text-faint); font-style: italic; }
+  .code-body .fn { color: #fbbf24; }
+
+  /* ─── Task List ─────────────────────────────────────── */
+  .task-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 12px 0;
+  }
+
+  .task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 4px 0;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .task-checkbox {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--text-faint);
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+
+  .task-checkbox.checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .task-checkbox.checked::after {
+    content: '\2713';
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .task-item.done {
+    color: var(--text-faint);
+    text-decoration: line-through;
+  }
+
+  /* ─── Editor Footer ─────────────────────────────────── */
+  .editor-footer {
+    padding: 8px 24px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+
+  /* ─── Scrollbar ─────────────────────────────────────── */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255,255,255,0.15);
+  }
+
+  /* ─── Placeholder ───────────────────────────────────── */
+  .placeholder {
+    color: var(--text-faint);
+    font-size: 15px;
+    line-height: 1.75;
+  }
+
+  /* ─── Label: NEW vs CURRENT ─────────────────────────── */
+  .mockup-label {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: white;
+    padding: 4px 16px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    z-index: 100;
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+  }
+</style>
+</head>
+<body>
+
+<div class="mockup-label">REDESIGNED NOTES UI — DARK MODE MOCKUP</div>
+
+<div class="app">
+  <!-- ─── Nav Sidebar ─────────────────────────────────── -->
+  <nav class="nav-sidebar">
+    <div class="nav-logo">Life OS</div>
+    <div class="nav-item"><span class="nav-icon">&#9633;</span> Dashboard</div>
+    <div class="nav-item"><span class="nav-icon">&#10003;</span> Tasks</div>
+    <div class="nav-item"><span class="nav-icon">&#9776;</span> Projects</div>
+    <div class="nav-item"><span class="nav-icon">&#128197;</span> Calendar</div>
+    <div class="nav-item active"><span class="nav-icon">&#9998;</span> Notes</div>
+    <div class="nav-item"><span class="nav-icon">&#10697;</span> Canvas</div>
+    <div class="nav-item"><span class="nav-icon">&#9881;</span> Flashcards</div>
+    <div class="nav-item"><span class="nav-icon">&#9201;</span> Pomodoro</div>
+    <div class="nav-item"><span class="nav-icon">&#10004;</span> Habits</div>
+    <div class="nav-item"><span class="nav-icon">&#128161;</span> Ideas</div>
+    <div class="nav-item"><span class="nav-icon">&#127919;</span> Goals</div>
+    <div class="nav-bottom">
+      <div class="nav-item"><span class="nav-icon">&#9788;</span> Light Mode</div>
+      <div class="nav-item"><span class="nav-icon">&#9881;</span> Settings</div>
+    </div>
+  </nav>
+
+  <!-- ─── Notebooks Panel ─────────────────────────────── -->
+  <aside class="notebooks-panel">
+    <div class="panel-header">
+      <span class="panel-title">Notebooks</span>
+      <div class="panel-actions">
+        <button class="panel-btn">+</button>
+      </div>
+    </div>
+
+    <input class="search-box" placeholder="Search pages..." />
+
+    <button class="daily-note-btn">
+      <span style="font-size: 14px;">&#128197;</span>
+      Today's Note
+    </button>
+
+    <div class="notebook-list">
+      <div class="notebook-item expanded">
+        <div class="notebook-dot" style="background: #6366f1;"></div>
+        Java 98
+        <span class="notebook-chevron">&#9654;</span>
+      </div>
+      <div class="section-item active">
+        <span style="font-size: 11px; opacity: 0.4;">&#128196;</span>
+        General
+        <span class="section-count">4</span>
+      </div>
+      <div class="section-item">
+        <span style="font-size: 11px; opacity: 0.4;">&#128196;</span>
+        Advanced
+        <span class="section-count">2</span>
+      </div>
+
+      <div class="notebook-item" style="margin-top: 4px;">
+        <div class="notebook-dot" style="background: #22c55e;"></div>
+        System Design
+        <span class="notebook-chevron">&#9654;</span>
+      </div>
+
+      <div class="notebook-item" style="margin-top: 4px;">
+        <div class="notebook-dot" style="background: #f97316;"></div>
+        Personal
+        <span class="notebook-chevron">&#9654;</span>
+      </div>
+
+      <div class="notebook-item" style="margin-top: 4px;">
+        <div class="notebook-dot" style="background: #ec4899;"></div>
+        React Notes
+        <span class="notebook-chevron">&#9654;</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Pages Panel ─────────────────────────────────── -->
+  <aside class="pages-panel">
+    <div class="panel-header">
+      <span class="panel-title">Pages <span style="opacity: 0.4; margin-left: 4px;">4</span></span>
+      <div class="panel-actions">
+        <button class="panel-btn">+</button>
+      </div>
+    </div>
+
+    <div class="pages-list">
+      <div class="page-card active">
+        <div class="page-title">Collections in Java</div>
+        <div class="page-preview">A Collection represents a group of objects known as its elements. The Collection interface is used to pass around collections...</div>
+        <div class="page-meta">
+          <span>Mar 6</span>
+          <span>&middot;</span>
+          <span>342 words</span>
+          <span class="page-tag">java</span>
+        </div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-title">Functional Interfaces</div>
+        <div class="page-preview">An interface with exactly one abstract method is a functional interface. Used extensively with lambda expressions...</div>
+        <div class="page-meta">
+          <span>Mar 6</span>
+          <span>&middot;</span>
+          <span>218 words</span>
+        </div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-title">Stream API Deep Dive</div>
+        <div class="page-preview">Streams provide a declarative approach to processing collections of data. They support sequential and parallel execution...</div>
+        <div class="page-meta">
+          <span>Mar 5</span>
+          <span>&middot;</span>
+          <span>510 words</span>
+          <span class="page-tag">java</span>
+        </div>
+      </div>
+
+      <div class="page-card">
+        <div class="page-title">Generics & Type Erasure</div>
+        <div class="page-preview">Generics enable types to be parameters when defining classes, interfaces, and methods. Type erasure removes all generic...</div>
+        <div class="page-meta">
+          <span>Mar 4</span>
+          <span>&middot;</span>
+          <span>189 words</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Editor Panel ────────────────────────────────── -->
+  <main class="editor-panel">
+    <div class="editor-topbar">
+      <div class="breadcrumb">
+        <span>Java 98</span>
+        <span class="breadcrumb-sep">&#8250;</span>
+        <span>General</span>
+        <span class="breadcrumb-sep">&#8250;</span>
+        <span class="breadcrumb-current">Collections in Java</span>
+      </div>
+      <div class="editor-actions">
+        <button class="action-btn" title="Toggle view">&#9633;</button>
+        <button class="action-btn" title="Table of contents">&#9776;</button>
+        <button class="action-btn" title="Connections">&#128279;</button>
+        <button class="action-btn" title="Fullscreen">&#10530;</button>
+      </div>
+    </div>
+
+    <div class="editor-scroll">
+      <div class="editor-content">
+        <div class="editor-title">Collections in Java</div>
+        <div class="editor-subtitle-row">
+          <span class="editor-date">Mar 6, 2026</span>
+          <span class="tag-pill purple">java</span>
+          <span class="tag-pill blue">collections</span>
+        </div>
+
+        <div class="prose">
+          <h2>What are Collections?</h2>
+          <p>A <strong>Collection</strong> represents a group of objects known as its elements. The Java Collections Framework provides a unified architecture for representing and manipulating collections, enabling them to be manipulated independently of implementation details.</p>
+
+          <div class="callout tip">
+            <span class="callout-icon">&#128161;</span>
+            <span>Collections are the backbone of Java data structures. Master these and you'll handle 90% of data manipulation tasks.</span>
+          </div>
+
+          <h2>Core Interfaces</h2>
+          <p>The framework is built around a set of core interfaces. Each interface defines a different type of collection:</p>
+          <ul>
+            <li><code>List</code> — Ordered collection (sequence). Allows duplicates. e.g., <code>ArrayList</code>, <code>LinkedList</code></li>
+            <li><code>Set</code> — Collection that contains no duplicate elements. e.g., <code>HashSet</code>, <code>TreeSet</code></li>
+            <li><code>Map</code> — Object that maps keys to values. No duplicate keys. e.g., <code>HashMap</code>, <code>TreeMap</code></li>
+            <li><code>Queue</code> — Collection for holding elements prior to processing. e.g., <code>PriorityQueue</code></li>
+          </ul>
+
+          <p>See also: <span class="wiki-link">[[Functional Interfaces]]</span> for how lambdas work with collections, and <span class="wiki-link">[[Stream API Deep Dive]]</span> for processing pipelines.</p>
+
+          <h2>ArrayList Example</h2>
+
+          <div class="code-block">
+            <div class="code-header">
+              <span>java</span>
+              <span style="cursor: pointer;">Copy</span>
+            </div>
+            <div class="code-body">
+<span class="comment">// Creating and using an ArrayList</span>
+<span class="type">List</span>&lt;<span class="type">String</span>&gt; fruits = <span class="kw">new</span> <span class="type">ArrayList</span>&lt;&gt;();
+fruits.<span class="fn">add</span>(<span class="str">"Apple"</span>);
+fruits.<span class="fn">add</span>(<span class="str">"Banana"</span>);
+fruits.<span class="fn">add</span>(<span class="str">"Cherry"</span>);
+
+<span class="comment">// Using Stream API to filter</span>
+<span class="type">List</span>&lt;<span class="type">String</span>&gt; filtered = fruits.<span class="fn">stream</span>()
+    .<span class="fn">filter</span>(f -&gt; f.<span class="fn">startsWith</span>(<span class="str">"B"</span>))
+    .<span class="fn">collect</span>(<span class="type">Collectors</span>.<span class="fn">toList</span>());
+            </div>
+          </div>
+
+          <h2>Key Takeaways</h2>
+
+          <ul class="task-list">
+            <li class="task-item">
+              <div class="task-checkbox checked"></div>
+              <span class="done">Understand the Collection hierarchy</span>
+            </li>
+            <li class="task-item">
+              <div class="task-checkbox checked"></div>
+              <span class="done">Know when to use List vs Set vs Map</span>
+            </li>
+            <li class="task-item">
+              <div class="task-checkbox"></div>
+              <span>Practice with concurrent collections</span>
+            </li>
+            <li class="task-item">
+              <div class="task-checkbox"></div>
+              <span>Learn about <code>Collections.unmodifiableList()</code> patterns</span>
+            </li>
+          </ul>
+
+          <div class="callout info">
+            <span class="callout-icon">&#8505;</span>
+            <span>For thread-safe collections, look into <code>ConcurrentHashMap</code> and <code>CopyOnWriteArrayList</code> from the <code>java.util.concurrent</code> package.</span>
+          </div>
+
+          <blockquote>
+            "The Java Collections Framework is one of the most important subsystems of the Java platform." — Joshua Bloch, Effective Java
+          </blockquote>
+        </div>
+      </div>
+    </div>
+
+    <div class="editor-footer">
+      <span>342 words &middot; 1,847 characters</span>
+      <span>Saved &middot; 5:28 PM</span>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

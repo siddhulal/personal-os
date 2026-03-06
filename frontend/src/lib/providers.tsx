@@ -26,7 +26,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <AuthProvider>
           <AiChatProvider>
             {children}
-            <Toaster position="top-right" richColors />
+            <Toaster position="bottom-right" richColors />
           </AiChatProvider>
         </AuthProvider>
       </ThemeProvider>
