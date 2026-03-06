@@ -161,7 +161,7 @@ export default function FlashcardsPage() {
   if (view === "deck") {
     return (
       <AppShell>
-        <div className="max-w-4xl mx-auto space-y-6">
+        <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -263,7 +263,7 @@ export default function FlashcardsPage() {
   if (view === "review") {
     return (
       <AppShell>
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <Button variant="ghost" size="sm" onClick={() => { setView("deck"); refetchDue(); }}>
               <ChevronLeft className="h-4 w-4 mr-1" /> Back
@@ -368,7 +368,7 @@ export default function FlashcardsPage() {
   // Manage view
   return (
     <AppShell>
-      <div className="max-w-4xl mx-auto space-y-4">
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="sm" onClick={() => setView("deck")}>

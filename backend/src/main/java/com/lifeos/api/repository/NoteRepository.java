@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,4 +35,11 @@ public interface NoteRepository extends JpaRepository<Note, UUID> {
     @Query("SELECT n FROM Note n WHERE n.user.id = :userId AND n.deletedAt IS NULL " +
            "AND LOWER(n.title) LIKE LOWER(CONCAT('%', :query, '%')) ORDER BY n.updatedAt DESC")
     List<Note> suggestByTitle(@Param("userId") UUID userId, @Param("query") String query);
+
+    @Query("SELECT n FROM Note n WHERE n.user.id = :userId AND n.deletedAt IS NULL " +
+           "AND n.updatedAt BETWEEN :start AND :end ORDER BY n.updatedAt DESC")
+    List<Note> findByUserIdAndUpdatedAtBetween(
+            @Param("userId") UUID userId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 }

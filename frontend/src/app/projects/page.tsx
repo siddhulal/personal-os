@@ -264,7 +264,12 @@ export default function ProjectsPage() {
     setExpandedProjectId((prev) => (prev === projectId ? null : projectId));
   }
 
-  const projects = projectPage?.content ?? [];
+  const projects = (projectPage?.content ?? []).map((p) => ({
+    ...p,
+    tags: p.tags ?? [],
+    taskCount: p.taskCount ?? 0,
+    completedTaskCount: p.completedTaskCount ?? 0,
+  }));
   const totalPages = projectPage?.totalPages ?? 0;
   const totalElements = projectPage?.totalElements ?? 0;
   const isFirstPage = (projectPage?.page ?? 0) === 0;

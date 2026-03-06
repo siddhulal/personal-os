@@ -112,7 +112,7 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        <div className="grid gap-6 max-w-2xl">
+        <div className="grid gap-6 max-w-3xl">
           {/* User Profile */}
           <Card>
             <CardHeader>

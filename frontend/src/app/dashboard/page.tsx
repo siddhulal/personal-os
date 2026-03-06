@@ -103,10 +103,12 @@ export default function DashboardPage() {
             {/* Today's Tasks */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">
+                <Link href="/tasks" className="text-sm font-medium hover:underline">
                   Today&apos;s Tasks
-                </CardTitle>
-                <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                </Link>
+                <Link href="/tasks">
+                  <CheckSquare className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                </Link>
               </CardHeader>
               <CardContent>
                 {dashboard.todayTasks.length === 0 ? (
@@ -116,12 +118,13 @@ export default function DashboardPage() {
                 ) : (
                   <div className="space-y-2">
                     {dashboard.todayTasks.slice(0, 5).map((task) => (
-                      <div
+                      <Link
                         key={task.id}
-                        className="flex items-center gap-2 text-sm"
+                        href="/tasks"
+                        className="flex items-center gap-2 text-sm hover:bg-muted/50 rounded px-1 py-0.5 -mx-1 transition-colors"
                       >
                         <div
-                          className={`w-2 h-2 rounded-full ${
+                          className={`w-2 h-2 rounded-full shrink-0 ${
                             task.priority === "HIGH"
                               ? "bg-destructive"
                               : task.priority === "MEDIUM"
@@ -130,12 +133,12 @@ export default function DashboardPage() {
                           }`}
                         />
                         <span className="truncate">{task.title}</span>
-                      </div>
+                      </Link>
                     ))}
                     {dashboard.todayTasks.length > 5 && (
-                      <p className="text-xs text-muted-foreground">
+                      <Link href="/tasks" className="text-xs text-muted-foreground hover:underline block">
                         +{dashboard.todayTasks.length - 5} more
-                      </p>
+                      </Link>
                     )}
                   </div>
                 )}
@@ -145,7 +148,7 @@ export default function DashboardPage() {
             {/* Overdue Tasks */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Overdue</CardTitle>
+                <Link href="/tasks" className="text-sm font-medium hover:underline">Overdue</Link>
                 <AlertTriangle className="h-4 w-4 text-destructive" />
               </CardHeader>
               <CardContent>
@@ -156,18 +159,19 @@ export default function DashboardPage() {
                 ) : (
                   <div className="space-y-2">
                     {dashboard.overdueTasks.slice(0, 5).map((task) => (
-                      <div
+                      <Link
                         key={task.id}
-                        className="flex items-center gap-2 text-sm text-destructive"
+                        href="/tasks"
+                        className="flex items-center gap-2 text-sm text-destructive hover:bg-muted/50 rounded px-1 py-0.5 -mx-1 transition-colors"
                       >
-                        <div className="w-2 h-2 rounded-full bg-destructive" />
+                        <div className="w-2 h-2 rounded-full bg-destructive shrink-0" />
                         <span className="truncate">{task.title}</span>
-                      </div>
+                      </Link>
                     ))}
                     {dashboard.overdueTasks.length > 5 && (
-                      <p className="text-xs text-muted-foreground">
+                      <Link href="/tasks" className="text-xs text-muted-foreground hover:underline block">
                         +{dashboard.overdueTasks.length - 5} more
-                      </p>
+                      </Link>
                     )}
                   </div>
                 )}
@@ -177,10 +181,12 @@ export default function DashboardPage() {
             {/* Upcoming Tasks */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">
+                <Link href="/tasks" className="text-sm font-medium hover:underline">
                   Upcoming (7 days)
-                </CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+                </Link>
+                <Link href="/calendar">
+                  <Calendar className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                </Link>
               </CardHeader>
               <CardContent>
                 {dashboard.upcomingTasks.length === 0 ? (
@@ -190,20 +196,21 @@ export default function DashboardPage() {
                 ) : (
                   <div className="space-y-2">
                     {dashboard.upcomingTasks.slice(0, 5).map((task) => (
-                      <div
+                      <Link
                         key={task.id}
-                        className="flex items-center justify-between text-sm"
+                        href="/tasks"
+                        className="flex items-center justify-between text-sm hover:bg-muted/50 rounded px-1 py-0.5 -mx-1 transition-colors"
                       >
                         <span className="truncate">{task.title}</span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground shrink-0 ml-2">
                           {task.dueDate}
                         </span>
-                      </div>
+                      </Link>
                     ))}
                     {dashboard.upcomingTasks.length > 5 && (
-                      <p className="text-xs text-muted-foreground">
+                      <Link href="/tasks" className="text-xs text-muted-foreground hover:underline block">
                         +{dashboard.upcomingTasks.length - 5} more
-                      </p>
+                      </Link>
                     )}
                   </div>
                 )}
@@ -213,10 +220,12 @@ export default function DashboardPage() {
             {/* Active Projects */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">
+                <Link href="/projects" className="text-sm font-medium hover:underline">
                   Active Projects
-                </CardTitle>
-                <FolderKanban className="h-4 w-4 text-muted-foreground" />
+                </Link>
+                <Link href="/projects">
+                  <FolderKanban className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                </Link>
               </CardHeader>
               <CardContent>
                 {dashboard.activeProjects.length === 0 ? (
@@ -226,21 +235,19 @@ export default function DashboardPage() {
                 ) : (
                   <div className="space-y-3">
                     {dashboard.activeProjects.slice(0, 4).map((project) => (
-                      <div key={project.id} className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">
-                            {project.name}
-                          </span>
-                          <Badge variant="secondary" className="text-xs">
-                            {project.taskCount} tasks
-                          </Badge>
-                        </div>
-                      </div>
+                      <Link key={project.id} href={`/projects/${project.id}`} className="flex items-center justify-between hover:bg-muted/50 rounded px-1 py-1 -mx-1 transition-colors">
+                        <span className="text-sm font-medium truncate">
+                          {project.name}
+                        </span>
+                        <Badge variant="secondary" className="text-xs shrink-0 ml-2">
+                          {project.taskCount} tasks
+                        </Badge>
+                      </Link>
                     ))}
                     {dashboard.activeProjects.length > 4 && (
-                      <p className="text-xs text-muted-foreground">
+                      <Link href="/projects" className="text-xs text-muted-foreground hover:underline block">
                         +{dashboard.activeProjects.length - 4} more
-                      </p>
+                      </Link>
                     )}
                   </div>
                 )}
@@ -250,10 +257,12 @@ export default function DashboardPage() {
             {/* Learning Progress */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">
+                <Link href="/learning" className="text-sm font-medium hover:underline">
                   Learning Progress
-                </CardTitle>
-                <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                </Link>
+                <Link href="/learning">
+                  <GraduationCap className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                </Link>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
@@ -286,10 +295,12 @@ export default function DashboardPage() {
             {/* Interview Progress */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">
+                <Link href="/interview" className="text-sm font-medium hover:underline">
                   Interview Prep
-                </CardTitle>
-                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                </Link>
+                <Link href="/interview">
+                  <MessageSquare className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                </Link>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between text-sm">
@@ -317,10 +328,12 @@ export default function DashboardPage() {
             {dashboard.habitProgress && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">
+                  <Link href="/habits" className="text-sm font-medium hover:underline">
                     Habits
-                  </CardTitle>
-                  <Repeat className="h-4 w-4 text-muted-foreground" />
+                  </Link>
+                  <Link href="/habits">
+                    <Repeat className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
+                  </Link>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div>
@@ -359,7 +372,11 @@ export default function DashboardPage() {
             )}
           </div>
           </>
-        ) : null}
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Failed to load dashboard data. Please try refreshing.</p>
+          </div>
+        )}
       </div>
     </AppShell>
   );

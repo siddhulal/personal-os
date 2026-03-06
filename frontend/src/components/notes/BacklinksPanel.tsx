@@ -17,24 +17,21 @@ export function BacklinksPanel({ noteId, onNavigate }: BacklinksPanelProps) {
     enabled: !!noteId,
   });
 
-  if (backlinks.length === 0) {
-    return (
-      <div className="py-6 text-center text-xs text-muted-foreground">
-        No backlinks yet. Other notes that link to this one will appear here.
-      </div>
-    );
-  }
+  if (backlinks.length === 0) return null;
 
   return (
-    <div className="px-4 py-3">
-      <div className="flex flex-wrap gap-1.5">
+    <div className="px-6 pb-1">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[11px] text-muted-foreground/60 font-medium uppercase tracking-wider mr-0.5">
+          Linked from
+        </span>
         {backlinks.map((link) => (
           <button
             key={link.id}
             onClick={() => onNavigate(link.sourceNoteId)}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-primary/8 text-primary/80 hover:bg-primary/15 hover:text-primary transition-colors"
           >
-            <Link2 className="h-3 w-3" />
+            <ArrowLeft className="h-2.5 w-2.5" />
             {link.sourceNoteTitle}
           </button>
         ))}

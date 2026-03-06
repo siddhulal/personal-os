@@ -8,6 +8,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -30,16 +32,18 @@ public class DashboardService {
     private final HabitCompletionRepository habitCompletionRepository;
     private final NoteRepository noteRepository;
     private final FlashcardRepository flashcardRepository;
+    private final InterviewService interviewService;
 
+    @Transactional(readOnly = true)
     public DashboardResponse getDashboard() {
         UUID userId = getCurrentUserId();
         LocalDate today = LocalDate.now();
         LocalDate weekEnd = today.plusDays(7);
 
-        // Today's tasks
-        List<Task> todayTasks = taskRepository.findByUserIdAndDueDateAndDeletedAtIsNull(userId, today);
+        // Today's tasks: due today + active tasks without due date (TODO/IN_PROGRESS)
+        List<Task> todayTasks = taskRepository.findTodayDashboardTasks(userId, today);
 
-        // Overdue tasks
+        // Overdue tasks (past due, not done)
         List<Task> overdueTasks = taskRepository.findByUserIdAndDueDateBeforeAndStatusNotAndDeletedAtIsNull(
             userId, today, Task.Status.DONE);
 
@@ -79,17 +83,15 @@ public class DashboardService {
             .studySessionsThisWeek((int) studySessions)
             .build();
 
-        // Interview progress
-        var questions = interviewQuestionRepository.findByUserIdAndDeletedAtIsNull(userId, PageRequest.of(0, 1));
-        long totalQuestions = questions.getTotalElements();
-        long practicedThisWeek = practiceRecordRepository.countPracticedThisWeek(userId, weekStart);
-
-        InterviewProgressDTO interviewProgress = InterviewProgressDTO.builder()
-            .totalQuestions((int) totalQuestions)
-            .masteredQuestions(0) // simplified for dashboard
-            .practicedThisWeek((int) practicedThisWeek)
-            .topicProgress(new HashMap<>())
-            .build();
+        // Interview progress — use the real calculation from InterviewService
+        InterviewProgressDTO interviewProgress;
+        try {
+            interviewProgress = interviewService.getInterviewProgress();
+        } catch (Exception e) {
+            interviewProgress = InterviewProgressDTO.builder()
+                .totalQuestions(0).masteredQuestions(0).practicedThisWeek(0)
+                .topicProgress(new HashMap<>()).build();
+        }
 
         // Habit progress
         var activeHabits = habitRepository.findByUserIdAndDeletedAtIsNullAndArchivedAtIsNullOrderByOrderIndexAsc(userId);

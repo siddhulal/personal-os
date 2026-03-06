@@ -105,6 +105,28 @@ public class AiController {
         return ResponseEntity.ok(generateService.processNoteText(request));
     }
 
+    // --- AI Copilot ---
+
+    @PostMapping("/generate/flashcards-from-note/{noteId}")
+    public ResponseEntity<AiGenerateResponse> generateFlashcardsFromNote(@PathVariable UUID noteId) {
+        return ResponseEntity.ok(generateService.generateFlashcardsFromNote(noteId));
+    }
+
+    @PostMapping("/generate/summarize-project/{projectId}")
+    public ResponseEntity<AiGenerateResponse> summarizeProject(@PathVariable UUID projectId) {
+        return ResponseEntity.ok(generateService.summarizeProject(projectId));
+    }
+
+    @PostMapping("/generate/weekly-review")
+    public ResponseEntity<AiGenerateResponse> generateWeeklyReview() {
+        return ResponseEntity.ok(generateService.generateWeeklyReview());
+    }
+
+    @PostMapping("/generate/suggest-tasks/{goalId}")
+    public ResponseEntity<AiGenerateResponse> suggestTasksFromGoal(@PathVariable UUID goalId) {
+        return ResponseEntity.ok(generateService.suggestTasksFromGoal(goalId));
+    }
+
     // --- Provider Status ---
 
     @GetMapping("/providers/status")

@@ -6,15 +6,12 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NotebookSidebar } from "@/components/notes/NotebookSidebar";
 import { SectionPageList } from "@/components/notes/SectionPageList";
 import { TipTapEditor } from "@/components/notes/TipTapEditor";
 import { BacklinksPanel } from "@/components/notes/BacklinksPanel";
 import { TagPanel } from "@/components/notes/TagPanel";
 import { KnowledgeGraph } from "@/components/notes/KnowledgeGraph";
-import { RelatedNotesPanel } from "@/components/notes/RelatedNotesPanel";
-import { AutoLinkSuggestions } from "@/components/notes/AutoLinkSuggestions";
 import { useAutosave } from "@/lib/hooks/useAutosave";
 import {
   fetchNotebooks,
@@ -35,10 +32,7 @@ import {
   Maximize2,
   Minimize2,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
   Network,
-  Link2,
   Book,
   FileText,
 } from "lucide-react";
@@ -82,7 +76,6 @@ export default function NotesPage() {
   const [fullscreen, setFullscreen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
-  const [connectionsOpen, setConnectionsOpen] = useState(true);
 
   // Escape key exits fullscreen, Cmd+K opens command palette
   useEffect(() => {
@@ -349,6 +342,12 @@ export default function NotesPage() {
           {/* Tags */}
           <TagPanel note={selectedPage} />
 
+          {/* Backlinks (inline under title) */}
+          <BacklinksPanel
+            noteId={selectedPageId}
+            onNavigate={handleNavigateToNote}
+          />
+
           {/* Editor */}
           <div className="flex-1 overflow-y-auto">
             <TipTapEditor
@@ -368,65 +367,6 @@ export default function NotesPage() {
             </span>
           </div>
 
-          {/* Connections Panel (tabbed: Backlinks / Links / Related) */}
-          {!fullscreen && (
-            <div className="border-t border-border/50">
-              {/* Connections header with toggle */}
-              <button
-                className="w-full flex items-center gap-2 px-4 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-                onClick={() => setConnectionsOpen(!connectionsOpen)}
-              >
-                <Link2 className="h-3.5 w-3.5" />
-                <span>Connections</span>
-                {connectionsOpen ? (
-                  <ChevronDown className="h-3.5 w-3.5 ml-auto" />
-                ) : (
-                  <ChevronUp className="h-3.5 w-3.5 ml-auto" />
-                )}
-              </button>
-
-              {/* Collapsible content */}
-              <div
-                className={`grid transition-[grid-template-rows] duration-250 ease-in-out ${
-                  connectionsOpen ? "grid-rows-collapse-open" : "grid-rows-collapse-closed"
-                }`}
-              >
-                <div className="overflow-hidden">
-                  <Tabs defaultValue="backlinks" className="px-2 pb-2">
-                    <TabsList className="h-8 w-full">
-                      <TabsTrigger value="backlinks" className="text-xs flex-1">
-                        Backlinks
-                      </TabsTrigger>
-                      <TabsTrigger value="links" className="text-xs flex-1">
-                        Links
-                      </TabsTrigger>
-                      <TabsTrigger value="related" className="text-xs flex-1">
-                        Related
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="backlinks" className="mt-1">
-                      <BacklinksPanel
-                        noteId={selectedPageId}
-                        onNavigate={handleNavigateToNote}
-                      />
-                    </TabsContent>
-                    <TabsContent value="links" className="mt-1">
-                      <AutoLinkSuggestions
-                        noteId={selectedPageId}
-                        onNavigate={handleNavigateToNote}
-                      />
-                    </TabsContent>
-                    <TabsContent value="related" className="mt-1">
-                      <RelatedNotesPanel
-                        noteId={selectedPageId}
-                        onNavigate={handleNavigateToNote}
-                      />
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              </div>
-            </div>
-          )}
         </>
       ) : (
         <div className="flex-1 flex items-center justify-center text-muted-foreground">

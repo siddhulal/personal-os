@@ -496,3 +496,162 @@ export interface SearchResults {
   roadmaps: LearningRoadmap[];
   questions: InterviewQuestion[];
 }
+
+// ============================================================
+// Note Templates
+// ============================================================
+
+export interface NoteTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  content: string | null;
+  contentJson: string | null;
+  category: string;
+  icon: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============================================================
+// Note Versions
+// ============================================================
+
+export interface NoteVersion {
+  id: string;
+  noteId: string;
+  title: string;
+  content: string | null;
+  contentJson: string | null;
+  versionNumber: number;
+  createdAt: string;
+}
+
+// ============================================================
+// Canvas
+// ============================================================
+
+export interface CanvasNode {
+  id: string;
+  canvasId: string;
+  noteId: string | null;
+  noteTitle: string | null;
+  label: string | null;
+  content: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string | null;
+  nodeType: string;
+  createdAt: string;
+}
+
+export interface CanvasEdge {
+  id: string;
+  canvasId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  label: string | null;
+}
+
+// ============================================================
+// Calendar Events
+// ============================================================
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  startTime: string;
+  endTime: string | null;
+  allDay: boolean;
+  color: string | null;
+  category: string;
+  taskId: string | null;
+  taskTitle: string | null;
+  recurrenceRule: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============================================================
+// Pomodoro
+// ============================================================
+
+export type PomodoroStatus = "COMPLETED" | "CANCELLED" | "IN_PROGRESS";
+
+export interface PomodoroSession {
+  id: string;
+  taskId: string | null;
+  taskTitle: string | null;
+  durationMinutes: number;
+  breakMinutes: number;
+  status: PomodoroStatus;
+  startedAt: string;
+  completedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface PomodoroStats {
+  totalSessions: number;
+  totalMinutes: number;
+  averageMinutes: number;
+  sessionsThisWeek: number;
+}
+
+// ============================================================
+// Webhooks
+// ============================================================
+
+export interface WebhookConfig {
+  id: string;
+  name: string;
+  url: string;
+  hasSecret: boolean;
+  events: string[];
+  isActive: boolean;
+  lastTriggeredAt: string | null;
+  failureCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============================================================
+// Cross-Module Links / Smart Connections
+// ============================================================
+
+export interface CrossModuleLink {
+  id: string;
+  sourceType: string;
+  sourceId: string;
+  sourceTitle: string | null;
+  targetType: string;
+  targetId: string;
+  targetTitle: string | null;
+  linkType: string;
+  createdAt: string;
+}
+
+// ============================================================
+// Analytics
+// ============================================================
+
+export interface AnalyticsData {
+  totalTasks: number;
+  completedTasks: number;
+  totalProjects: number;
+  activeProjects: number;
+  totalNotes: number;
+  totalFlashcards: number;
+  flashcardsDue: number;
+  totalHabits: number;
+  habitCompletionRate: number;
+  pomodoroSessionsThisWeek: number;
+  totalFocusMinutes: number;
+  currentStreak: number;
+  longestStreak: number;
+  dailyActivity: { date: string; tasks: number; notes: number; flashcards: number; pomodoros: number }[];
+  weeklyTrends: { week: string; productivity: number; focusMinutes: number }[];
+}

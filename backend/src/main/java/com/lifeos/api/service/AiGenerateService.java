@@ -8,16 +8,19 @@ import com.lifeos.api.dto.AiGenerateRequest;
 import com.lifeos.api.dto.AiGenerateResponse;
 import com.lifeos.api.entity.*;
 import com.lifeos.api.exception.ResourceNotFoundException;
-import com.lifeos.api.repository.InterviewAnswerRepository;
-import com.lifeos.api.repository.InterviewQuestionRepository;
-import com.lifeos.api.repository.LearningTopicRepository;
+import com.lifeos.api.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -29,6 +32,12 @@ public class AiGenerateService {
     private final InterviewAnswerRepository answerRepository;
     private final AiSettingsService settingsService;
     private final AiProviderRegistry providerRegistry;
+    private final NoteRepository noteRepository;
+    private final ProjectRepository projectRepository;
+    private final TaskRepository taskRepository;
+    private final GoalRepository goalRepository;
+    private final HabitCompletionRepository habitCompletionRepository;
+    private final PomodoroSessionRepository pomodoroSessionRepository;
 
     public AiGenerateResponse generateExamples(UUID topicId) {
         User user = getCurrentUser();
@@ -243,6 +252,181 @@ public class AiGenerateService {
         return AiGenerateResponse.builder()
                 .content(response)
                 .type("note_assist")
+                .build();
+    }
+
+    public AiGenerateResponse generateFlashcardsFromNote(UUID noteId) {
+        User user = getCurrentUser();
+        Note note = noteRepository.findById(noteId)
+                .orElseThrow(() -> new ResourceNotFoundException("Note", "id", noteId));
+
+        String noteContent = note.getContent() != null ? note.getContent() : "";
+        String prompt = "Generate flashcards from the following note content. " +
+                "Return ONLY a valid JSON array. Each object must have fields: " +
+                "'front' (question), 'back' (answer). " +
+                "Generate 5-10 high-quality flashcards.\n\n" +
+                noteContent;
+
+        String response = callProvider(user, prompt);
+        return AiGenerateResponse.builder()
+                .content(response)
+                .type("flashcards")
+                .build();
+    }
+
+    public AiGenerateResponse summarizeProject(UUID projectId) {
+        User user = getCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project", "id", projectId));
+
+        List<Task> tasks = taskRepository.findByProjectIdAndDeletedAtIsNull(projectId);
+
+        long totalTasks = tasks.size();
+        long completedTasks = tasks.stream()
+                .filter(t -> t.getStatus() == Task.Status.DONE)
+                .count();
+        long inProgressTasks = tasks.stream()
+                .filter(t -> t.getStatus() == Task.Status.IN_PROGRESS)
+                .count();
+        long todoTasks = tasks.stream()
+                .filter(t -> t.getStatus() == Task.Status.TODO)
+                .count();
+
+        String taskSummary = tasks.stream()
+                .map(t -> String.format("- [%s] %s (Priority: %s)", t.getStatus(), t.getTitle(), t.getPriority()))
+                .collect(Collectors.joining("\n"));
+
+        String prompt = String.format(
+                "Summarize the following project and provide recommendations.\n\n" +
+                "Project: %s\n" +
+                "Description: %s\n" +
+                "Status: %s\n\n" +
+                "Task Statistics:\n" +
+                "- Total tasks: %d\n" +
+                "- Completed: %d\n" +
+                "- In Progress: %d\n" +
+                "- To Do: %d\n\n" +
+                "Task Details:\n%s\n\n" +
+                "Please provide:\n" +
+                "1. A concise project status summary\n" +
+                "2. Progress assessment (percentage and qualitative)\n" +
+                "3. Key tasks that need attention\n" +
+                "4. Recommendations for next steps\n" +
+                "5. Potential risks or blockers\n\n" +
+                "Use markdown formatting.",
+                project.getName(),
+                project.getDescription() != null ? project.getDescription() : "No description",
+                project.getStatus(),
+                totalTasks, completedTasks, inProgressTasks, todoTasks,
+                taskSummary.isEmpty() ? "No tasks yet" : taskSummary
+        );
+
+        String response = callProvider(user, prompt);
+        return AiGenerateResponse.builder()
+                .content(response)
+                .type("project_summary")
+                .build();
+    }
+
+    public AiGenerateResponse generateWeeklyReview() {
+        User user = getCurrentUser();
+        UUID userId = user.getId();
+
+        LocalDate today = LocalDate.now();
+        LocalDate startOfWeek = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDateTime weekStart = startOfWeek.atStartOfDay();
+        LocalDateTime weekEnd = today.atTime(23, 59, 59);
+
+        // Fetch tasks completed this week
+        List<Task> completedTasks = taskRepository.findCompletedByUserIdBetween(userId, weekStart, weekEnd);
+        String completedTasksSummary = completedTasks.stream()
+                .map(t -> String.format("- %s (Priority: %s)", t.getTitle(), t.getPriority()))
+                .collect(Collectors.joining("\n"));
+
+        // Fetch notes modified this week
+        List<Note> modifiedNotes = noteRepository.findByUserIdAndUpdatedAtBetween(userId, weekStart, weekEnd);
+        String notesSummary = modifiedNotes.stream()
+                .map(n -> String.format("- %s", n.getTitle()))
+                .collect(Collectors.joining("\n"));
+
+        // Fetch habit completions this week
+        List<HabitCompletion> habitCompletions = habitCompletionRepository
+                .findByUserIdAndDateRange(userId, startOfWeek, today);
+        String habitsSummary = habitCompletions.stream()
+                .map(hc -> String.format("- %s on %s", hc.getHabit().getName(), hc.getCompletedDate()))
+                .collect(Collectors.joining("\n"));
+
+        // Fetch pomodoro sessions this week
+        List<PomodoroSession> pomodoroSessions = pomodoroSessionRepository
+                .findByUserIdAndStartedAtBetween(userId, weekStart, weekEnd);
+        int totalFocusMinutes = pomodoroSessions.stream()
+                .mapToInt(PomodoroSession::getDurationMinutes)
+                .sum();
+        int totalSessions = pomodoroSessions.size();
+
+        String prompt = String.format(
+                "Generate a weekly productivity review based on the following data.\n\n" +
+                "Week: %s to %s\n\n" +
+                "Tasks Completed (%d):\n%s\n\n" +
+                "Notes Modified (%d):\n%s\n\n" +
+                "Habit Completions (%d):\n%s\n\n" +
+                "Focus Sessions: %d sessions, %d total minutes\n\n" +
+                "Please provide:\n" +
+                "1. Weekly productivity summary\n" +
+                "2. Key accomplishments\n" +
+                "3. Patterns and insights (productivity trends, consistency)\n" +
+                "4. Areas for improvement\n" +
+                "5. Suggestions for next week\n\n" +
+                "Use markdown formatting. Be encouraging but honest.",
+                startOfWeek, today,
+                completedTasks.size(),
+                completedTasksSummary.isEmpty() ? "None" : completedTasksSummary,
+                modifiedNotes.size(),
+                notesSummary.isEmpty() ? "None" : notesSummary,
+                habitCompletions.size(),
+                habitsSummary.isEmpty() ? "None" : habitsSummary,
+                totalSessions, totalFocusMinutes
+        );
+
+        String response = callProvider(user, prompt);
+        return AiGenerateResponse.builder()
+                .content(response)
+                .type("weekly_review")
+                .build();
+    }
+
+    public AiGenerateResponse suggestTasksFromGoal(UUID goalId) {
+        User user = getCurrentUser();
+        Goal goal = goalRepository.findById(goalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Goal", "id", goalId));
+
+        String prompt = String.format(
+                "Suggest 5 actionable tasks to make progress on the following goal.\n\n" +
+                "Goal: %s\n" +
+                "Description: %s\n" +
+                "Status: %s\n" +
+                "Current Progress: %d%%\n" +
+                "Timeframe: %s\n" +
+                "Target Date: %s\n\n" +
+                "Return ONLY a valid JSON array. No markdown, no explanation, no code blocks.\n" +
+                "Each object must have these exact fields:\n" +
+                "- \"title\": a concise task title\n" +
+                "- \"description\": a detailed description of what to do\n\n" +
+                "Make the tasks specific, measurable, and actionable. " +
+                "Order them by priority (most impactful first).\n\n" +
+                "Return ONLY the JSON array, nothing else.",
+                goal.getTitle(),
+                goal.getDescription() != null ? goal.getDescription() : "No description",
+                goal.getStatus(),
+                goal.getProgress(),
+                goal.getTimeframe() != null ? goal.getTimeframe() : "Not specified",
+                goal.getTargetDate() != null ? goal.getTargetDate().toString() : "Not set"
+        );
+
+        String response = callProvider(user, prompt);
+        return AiGenerateResponse.builder()
+                .content(response)
+                .type("goal_tasks")
                 .build();
     }
 

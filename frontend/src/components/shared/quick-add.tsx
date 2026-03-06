@@ -34,7 +34,10 @@ export function QuickAdd() {
       }
 
       if (type === "task") {
-        await api.post("/api/tasks", { title: content });
+        await api.post("/api/tasks", {
+          title: content,
+          dueDate: new Date().toISOString().split("T")[0],
+        });
         queryClient.invalidateQueries({ queryKey: ["tasks"] });
         queryClient.invalidateQueries({ queryKey: ["dashboard"] });
         toast.success("Task created");
