@@ -6,8 +6,6 @@ import ReactFlow, {
   Controls,
   Edge,
   Node,
-  OnNodesChange,
-  OnEdgesChange,
   OnConnect,
   Panel,
   useReactFlow,
@@ -18,14 +16,20 @@ import ReactFlow, {
   ReactFlowProvider,
   useNodesState,
   useEdgesState,
-  addEdge,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Maximize, MoreVertical, Check, X, MoveRight, Type } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Maximize,
+  Check,
+  X,
+  MoreVertical,
+} from "lucide-react";
 import {
   fetchCanvasNodes,
   fetchCanvasEdges,
@@ -35,65 +39,184 @@ import {
   createCanvasEdge,
   deleteCanvasEdge,
 } from "@/lib/api/canvas";
-import type { CanvasNode, CanvasEdge } from "@/types";
+import type {
+  CanvasNode as ApiCanvasNode,
+  CanvasEdge as ApiCanvasEdge,
+} from "@/types";
 import { cn } from "@/lib/utils";
 
+// ─── Constants ──────────────────────────────────────────────────────────────────
+
 const NODE_WIDTH = 260;
+const NODE_HEIGHT = 100;
+
 const COLORS = [
   "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e",
   "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6",
 ];
+
 const pickColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
 
-// Custom Node Component
+type EdgeStyleType = "solid" | "dotted" | "animated";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+
+function buildEdgeVisuals(edgeType: string | null | undefined): {
+  animated: boolean;
+  style: React.CSSProperties;
+} {
+  const base: React.CSSProperties = {
+    stroke: "hsl(var(--primary))",
+    strokeWidth: 2,
+    opacity: 0.7,
+  };
+  switch (edgeType) {
+    case "dotted":
+      return { animated: false, style: { ...base, strokeDasharray: "5,5" } };
+    case "animated":
+      return { animated: true, style: base };
+    default:
+      return { animated: false, style: base };
+  }
+}
+
+function apiNodeToFlowNode(
+  n: ApiCanvasNode,
+  onUpdate: (id: string, updates: Record<string, unknown>) => void
+): Node {
+  return {
+    id: n.id,
+    type: "note",
+    position: { x: n.x, y: n.y },
+    data: {
+      label: n.label,
+      content: n.content,
+      color: n.color,
+      onUpdate,
+    },
+  };
+}
+
+function apiEdgeToFlowEdge(e: ApiCanvasEdge): Edge {
+  const { animated, style } = buildEdgeVisuals(e.edgeType);
+  return {
+    id: e.id,
+    source: e.sourceNodeId,
+    target: e.targetNodeId,
+    sourceHandle: e.sourceHandle,
+    targetHandle: e.targetHandle,
+    animated,
+    style,
+    data: { edgeType: e.edgeType || "solid" },
+  };
+}
+
+function buildFullNodePayload(node: Node) {
+  return {
+    canvasId: "default",
+    label: node.data.label ?? "",
+    content: node.data.content ?? "",
+    x: Math.round(node.position.x),
+    y: Math.round(node.position.y),
+    width: NODE_WIDTH,
+    height: NODE_HEIGHT,
+    color: node.data.color,
+    nodeType: "note",
+  };
+}
+
+// ─── Custom Node Component ──────────────────────────────────────────────────────
+
 const NoteNode = ({ data, id, selected }: NodeProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [label, setLabel] = useState(data.label || "");
   const [content, setContent] = useState(data.content || "");
-  
-  const onSave = () => {
+
+  // Sync local state from parent data ONLY when not editing.
+  // This is the key fix: when data.label/content changes from outside
+  // (e.g. after API response or another node's update), the display updates.
+  useEffect(() => {
+    if (!isEditing) {
+      setLabel(data.label || "");
+      setContent(data.content || "");
+    }
+  }, [data.label, data.content, isEditing]);
+
+  const onSave = useCallback(() => {
     data.onUpdate(id, { label, content });
     setIsEditing(false);
-  };
+  }, [data, id, label, content]);
 
-  const onCancel = () => {
+  const onCancel = useCallback(() => {
     setLabel(data.label || "");
     setContent(data.content || "");
     setIsEditing(false);
-  };
+  }, [data.label, data.content]);
+
+  const handleClass = cn(
+    "!w-3 !h-3 !bg-primary/70 !border-2 !border-background",
+    "hover:!scale-150 hover:!bg-primary transition-all !cursor-crosshair",
+    "opacity-0 group-hover:opacity-100",
+    selected && "opacity-100"
+  );
 
   return (
-    <div 
+    <div
       className={cn(
-        "bg-card border rounded-xl shadow-md min-w-[240px] transition-shadow relative",
+        "bg-card border rounded-xl shadow-md transition-shadow relative group",
         selected ? "ring-2 ring-primary shadow-lg" : "hover:shadow-lg"
       )}
+      style={{ minWidth: 240 }}
       onDoubleClick={() => !isEditing && setIsEditing(true)}
     >
-      {/* Port Handles - Enhanced hit area and clear feedback */}
-      <Handle type="source" position={Position.Top} id="top" className="!w-4 !h-4 !bg-primary border-2 border-background !-top-2 hover:!scale-150 hover:!bg-primary/80 transition-all cursor-crosshair z-50" />
-      <Handle type="source" position={Position.Left} id="left" className="!w-4 !h-4 !bg-primary border-2 border-background !-left-2 hover:!scale-150 hover:!bg-primary/80 transition-all cursor-crosshair z-50" />
-      <Handle type="source" position={Position.Right} id="right" className="!w-4 !h-4 !bg-primary border-2 border-background !-right-2 hover:!scale-150 hover:!bg-primary/80 transition-all cursor-crosshair z-50" />
-      <Handle type="source" position={Position.Bottom} id="bottom" className="!w-4 !h-4 !bg-primary border-2 border-background !-bottom-2 hover:!scale-150 hover:!bg-primary/80 transition-all cursor-crosshair z-50" />
+      {/* Connection handles — visible on hover or when selected */}
+      <Handle type="source" position={Position.Top} id="top"
+        className={cn(handleClass, "!-top-1.5")} />
+      <Handle type="source" position={Position.Bottom} id="bottom"
+        className={cn(handleClass, "!-bottom-1.5")} />
+      <Handle type="source" position={Position.Left} id="left"
+        className={cn(handleClass, "!-left-1.5")} />
+      <Handle type="source" position={Position.Right} id="right"
+        className={cn(handleClass, "!-right-1.5")} />
 
-      <div className="px-3 py-1.5 flex items-center justify-between gap-2 rounded-t-xl" style={{ backgroundColor: data.color || "#6366f1" }}>
+      {/* Header bar */}
+      <div
+        className="px-3 py-1.5 flex items-center justify-between gap-2 rounded-t-xl"
+        style={{ backgroundColor: data.color || "#6366f1" }}
+      >
         {isEditing ? (
           <input
             autoFocus
-            className="flex-1 text-sm font-semibold text-white bg-white/20 rounded px-1.5 py-0.5 outline-none border-none"
+            className="flex-1 text-sm font-semibold text-white bg-white/20 rounded px-1.5 py-0.5 outline-none border-none placeholder:text-white/50 nodrag"
             value={label}
+            placeholder="Card name..."
             onChange={(e) => setLabel(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onSave()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onSave();
+              if (e.key === "Escape") onCancel();
+            }}
             onMouseDown={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="text-sm font-semibold text-white truncate">{data.label || "Untitled"}</span>
+          <span className="text-sm font-semibold text-white truncate">
+            {data.label || "Untitled"}
+          </span>
         )}
-        <div className="flex gap-1">
+        <div className="flex gap-1 shrink-0">
           {isEditing ? (
             <>
-              <button onClick={onSave} className="text-white hover:bg-white/20 p-0.5 rounded"><Check className="h-3.5 w-3.5" /></button>
-              <button onClick={onCancel} className="text-white hover:bg-white/20 p-0.5 rounded"><X className="h-3.5 w-3.5" /></button>
+              <button
+                onClick={onSave}
+                className="text-white hover:bg-white/20 p-0.5 rounded"
+              >
+                <Check className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={onCancel}
+                className="text-white hover:bg-white/20 p-0.5 rounded"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </>
           ) : (
             <MoreVertical className="h-3.5 w-3.5 text-white/50" />
@@ -101,17 +224,27 @@ const NoteNode = ({ data, id, selected }: NodeProps) => {
         </div>
       </div>
 
+      {/* Body */}
       <div className="p-3">
         {isEditing ? (
           <textarea
-            className="w-full text-sm bg-muted/40 border rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-primary resize-none h-24"
+            className="w-full text-sm bg-muted/40 border rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-primary resize-none nodrag nowheel"
+            rows={4}
             value={content}
+            placeholder="Add description..."
             onChange={(e) => setContent(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") onCancel();
+            }}
             onMouseDown={(e) => e.stopPropagation()}
           />
         ) : (
           <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap min-h-[40px]">
-            {data.content || <span className="italic opacity-40 text-xs">Double-click to edit</span>}
+            {data.content || (
+              <span className="italic opacity-40 text-xs">
+                Double-click to edit
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -119,204 +252,295 @@ const NoteNode = ({ data, id, selected }: NodeProps) => {
   );
 };
 
+// IMPORTANT: Defined outside the component so React Flow doesn't
+// re-mount custom nodes on every render.
 const nodeTypes = { note: NoteNode };
 
+// ─── Canvas Engine ──────────────────────────────────────────────────────────────
+
 function CanvasEngine() {
-  const queryClient = useQueryClient();
-  const { screenToFlowPosition, fitView, getViewport } = useReactFlow();
+  const { fitView, getViewport, getNode, getNodes } = useReactFlow();
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [hasInitialized, setHasInitialized] = useState(false);
-  const [selectedEdgeType, setSelectedEdgeType] = useState<"solid" | "dotted">("solid");
-  const edgeTypeRef = useRef<"solid" | "dotted">("solid");
-  
+  const [selectedEdgeType, setSelectedEdgeType] =
+    useState<EdgeStyleType>("solid");
+
+  const initializedRef = useRef(false);
+  const edgesInitializedRef = useRef(false);
+  const edgeTypeRef = useRef<EdgeStyleType>("solid");
+
+  // Keep ref in sync so callbacks always read the latest value
   useEffect(() => {
     edgeTypeRef.current = selectedEdgeType;
   }, [selectedEdgeType]);
 
-  const isInitialLoadRef = useRef(true);
+  // ─── API Queries (fetch once, no auto-refetch) ────────────────────────────
 
-  const { data: apiNodes } = useQuery({ 
-    queryKey: ["canvas-nodes"], 
-    queryFn: () => fetchCanvasNodes("default") 
-  });
-  const { data: apiEdges } = useQuery({ 
-    queryKey: ["canvas-edges"], 
-    queryFn: () => fetchCanvasEdges("default") 
+  const { data: apiNodes, isSuccess: nodesReady } = useQuery({
+    queryKey: ["canvas-nodes"],
+    queryFn: () => fetchCanvasNodes("default"),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 
-  const updateNodeMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CanvasNode> }) => updateCanvasNode(id, data as any),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["canvas-nodes"] }),
+  const { data: apiEdges, isSuccess: edgesReady } = useQuery({
+    queryKey: ["canvas-edges"],
+    queryFn: () => fetchCanvasEdges("default"),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
+
+  // ─── Node update handler (passed into node data) ──────────────────────────
+  // Uses getNode() to read current position so we ALWAYS send full data
+  // to the backend (preventing the x=0, y=0 reset bug).
+
+  const onUpdateNode = useCallback(
+    (id: string, updates: Record<string, unknown>) => {
+      // 1. Optimistically update React Flow state
+      setNodes((nds) =>
+        nds.map((node) => {
+          if (node.id !== id) return node;
+          return {
+            ...node,
+            data: { ...node.data, ...updates },
+          };
+        })
+      );
+
+      // 2. Persist to backend with FULL node data (position + everything)
+      const currentNode = getNode(id);
+      if (currentNode) {
+        const payload = buildFullNodePayload({
+          ...currentNode,
+          data: { ...currentNode.data, ...updates },
+        });
+        updateCanvasNode(id, payload).catch(() =>
+          toast.error("Failed to save changes")
+        );
+      }
+    },
+    [setNodes, getNode]
+  );
+
+  // ─── Initialize nodes from API (ONE TIME) ────────────────────────────────
+
+  useEffect(() => {
+    if (initializedRef.current || !nodesReady || !apiNodes) return;
+    initializedRef.current = true;
+
+    const rfNodes = apiNodes.map((n) => apiNodeToFlowNode(n, onUpdateNode));
+    setNodes(rfNodes);
+
+    if (rfNodes.length > 0) {
+      setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 200);
+    }
+  }, [nodesReady, apiNodes, onUpdateNode, setNodes, fitView]);
+
+  // ─── Initialize edges from API (ONE TIME, after nodes) ────────────────────
+
+  useEffect(() => {
+    if (edgesInitializedRef.current || !initializedRef.current) return;
+    if (!edgesReady || !apiEdges) return;
+    edgesInitializedRef.current = true;
+
+    setEdges(apiEdges.map(apiEdgeToFlowEdge));
+  }, [edgesReady, apiEdges, setEdges, nodes]);
+
+  // ─── Mutations ────────────────────────────────────────────────────────────
 
   const createNodeMut = useMutation({
     mutationFn: createCanvasNode,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["canvas-nodes"] });
+    onSuccess: (newNode) => {
+      // Add real node from server to local state
+      setNodes((nds) => [...nds, apiNodeToFlowNode(newNode, onUpdateNode)]);
       toast.success("Card added");
     },
-    onError: (err: any) => {
-      console.error("Create node error:", err);
-      toast.error("Failed to create card. Please try again.");
-    },
+    onError: () => toast.error("Failed to create card"),
   });
 
   const deleteNodeMut = useMutation({
     mutationFn: deleteCanvasNode,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["canvas-nodes"] });
-      queryClient.invalidateQueries({ queryKey: ["canvas-edges"] });
-    },
+    onError: () => toast.error("Failed to delete card"),
   });
 
   const createEdgeMut = useMutation({
     mutationFn: createCanvasEdge,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["canvas-edges"] }),
+    onSuccess: (newEdge) => {
+      // Replace optimistic temp edge with the real server edge
+      setEdges((eds) => {
+        const withoutTemp = eds.filter(
+          (e) =>
+            !(
+              e.source === newEdge.sourceNodeId &&
+              e.target === newEdge.targetNodeId &&
+              e.id.startsWith("temp-")
+            )
+        );
+        return [...withoutTemp, apiEdgeToFlowEdge(newEdge)];
+      });
+    },
+    onError: () => {
+      setEdges((eds) => eds.filter((e) => !e.id.startsWith("temp-")));
+      toast.error("Failed to create connection");
+    },
   });
 
   const deleteEdgeMut = useMutation({
     mutationFn: deleteCanvasEdge,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["canvas-edges"] }),
+    onError: () => toast.error("Failed to delete connection"),
   });
 
-  const onUpdateNode = useCallback((id: string, updates: any) => {
-    updateNodeMut.mutate({ id, data: updates });
-  }, [updateNodeMut]);
+  // ─── Event Handlers ──────────────────────────────────────────────────────
 
-  // Sync API Nodes -> State
-  useEffect(() => {
-    if (apiNodes) {
-      const rfNodes: Node[] = apiNodes.map((n) => ({
-        id: n.id,
-        type: "note",
-        position: { x: n.x, y: n.y },
-        data: { 
-          label: n.label, 
-          content: n.content, 
-          color: n.color,
-          onUpdate: onUpdateNode
-        },
-      }));
-      
-      if (isInitialLoadRef.current || rfNodes.length !== nodes.length) {
-        setNodes(rfNodes);
-        isInitialLoadRef.current = false;
-        
-        if (!hasInitialized && rfNodes.length > 0) {
-          setTimeout(() => {
-            fitView({ padding: 0.2, duration: 800 });
-            setHasInitialized(true);
-          }, 100);
-        }
-      }
-    }
-  }, [apiNodes, onUpdateNode, fitView, hasInitialized, nodes.length, setNodes]);
+  const onNodeDragStop = useCallback(
+    (_: React.MouseEvent, draggedNode: Node) => {
+      // Save positions for the dragged node + any other selected nodes (batch drag)
+      const allNodes = getNodes();
+      const idsToSave = new Set<string>();
+      idsToSave.add(draggedNode.id);
+      allNodes.forEach((n) => {
+        if (n.selected) idsToSave.add(n.id);
+      });
 
-  // Sync API Edges -> State
-  useEffect(() => {
-    if (apiEdges) {
-      const rfEdges: Edge[] = apiEdges.map((e) => ({
-        id: e.id,
-        source: e.sourceNodeId,
-        target: e.targetNodeId,
-        sourceHandle: e.sourceHandle,
-        targetHandle: e.targetHandle,
-        animated: false, // Start static, only animated if we add a toggle
-        style: { 
-          stroke: "hsl(var(--primary))", 
-          strokeWidth: 2, 
-          opacity: 0.6,
-          strokeDasharray: e.edgeType === "dotted" ? "5,5" : undefined
-        },
-      }));
-      
-      if (rfEdges.length !== edges.length) {
-        setEdges(rfEdges);
-      }
-    }
-  }, [apiEdges, edges.length, setEdges]);
+      allNodes
+        .filter((n) => idsToSave.has(n.id))
+        .forEach((node) => {
+          updateCanvasNode(node.id, buildFullNodePayload(node)).catch(() =>
+            toast.error("Failed to save position")
+          );
+        });
+    },
+    [getNodes]
+  );
 
-  const onConnect: OnConnect = useCallback((params) => {
-    if (params.source && params.target) {
-      createEdgeMut.mutate({ 
-        canvasId: "default", 
-        sourceNodeId: params.source, 
+  const onConnect: OnConnect = useCallback(
+    (params) => {
+      if (!params.source || !params.target) return;
+
+      // Prevent duplicate edges between same source/target handles
+      const duplicate = edges.some(
+        (e) =>
+          e.source === params.source &&
+          e.target === params.target &&
+          e.sourceHandle === params.sourceHandle &&
+          e.targetHandle === params.targetHandle
+      );
+      if (duplicate) return;
+
+      const edgeType = edgeTypeRef.current;
+      const { animated, style } = buildEdgeVisuals(edgeType);
+
+      // Add optimistic temp edge immediately
+      const tempEdge: Edge = {
+        id: `temp-${Date.now()}`,
+        source: params.source,
+        target: params.target,
+        sourceHandle: params.sourceHandle,
+        targetHandle: params.targetHandle,
+        animated,
+        style,
+        data: { edgeType },
+      };
+      setEdges((eds) => [...eds, tempEdge]);
+
+      // Persist to backend
+      createEdgeMut.mutate({
+        canvasId: "default",
+        sourceNodeId: params.source,
         targetNodeId: params.target,
         sourceHandle: params.sourceHandle || undefined,
         targetHandle: params.targetHandle || undefined,
-        edgeType: edgeTypeRef.current
+        edgeType,
       });
-    }
-  }, [createEdgeMut]);
+    },
+    [createEdgeMut, setEdges, edges]
+  );
 
-  const onNodesDelete = useCallback((deleted: Node[]) => {
-    deleted.forEach(node => deleteNodeMut.mutate(node.id));
-  }, [deleteNodeMut]);
+  const onNodesDelete = useCallback(
+    (deleted: Node[]) => {
+      // Delete from backend
+      deleted.forEach((node) => deleteNodeMut.mutate(node.id));
+      // Clean up edges connected to deleted nodes
+      const deletedIds = new Set(deleted.map((n) => n.id));
+      setEdges((eds) =>
+        eds.filter((e) => !deletedIds.has(e.source) && !deletedIds.has(e.target))
+      );
+    },
+    [deleteNodeMut, setEdges]
+  );
 
-  const onEdgesDelete = useCallback((deleted: Edge[]) => {
-    deleted.forEach(edge => deleteEdgeMut.mutate(edge.id));
-  }, [deleteEdgeMut]);
+  const onEdgesDelete = useCallback(
+    (deleted: Edge[]) => {
+      deleted.forEach((edge) => {
+        if (!edge.id.startsWith("temp-")) {
+          deleteEdgeMut.mutate(edge.id);
+        }
+      });
+    },
+    [deleteEdgeMut]
+  );
 
-  const onNodeDragStop = useCallback((_: any, node: Node) => {
-    updateNodeMut.mutate({ 
-      id: node.id, 
-      data: { x: Math.round(node.position.x), y: Math.round(node.position.y) } 
-    });
-  }, [updateNodeMut]);
+  const onEdgeDoubleClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      if (!edge.id.startsWith("temp-")) {
+        deleteEdgeMut.mutate(edge.id);
+      }
+      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+    },
+    [deleteEdgeMut, setEdges]
+  );
 
   const onAddCard = useCallback(() => {
     try {
       const { x, y, zoom } = getViewport();
-      
-      // Calculate center of the visible area
-      const centerX = -x / zoom + (window.innerWidth / 2) / zoom;
-      const centerY = -y / zoom + (window.innerHeight / 2) / zoom;
+      const centerX = -x / zoom + window.innerWidth / 2 / zoom;
+      const centerY = -y / zoom + window.innerHeight / 2 / zoom;
 
-      createNodeMut.mutate({ 
-        canvasId: "default", 
-        label: "New Card", 
-        content: "", 
-        x: Math.round(centerX - NODE_WIDTH / 2), 
-        y: Math.round(centerY - 50), 
-        width: NODE_WIDTH, 
-        height: 100, 
-        color: pickColor(), 
-        nodeType: "note" 
+      createNodeMut.mutate({
+        canvasId: "default",
+        label: "New Card",
+        content: "",
+        x: Math.round(centerX - NODE_WIDTH / 2),
+        y: Math.round(centerY - 50),
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        color: pickColor(),
+        nodeType: "note",
       });
-    } catch (error) {
-      // Fallback
-      createNodeMut.mutate({ 
-        canvasId: "default", 
-        label: "New Card", 
-        content: "", 
-        x: Math.round(Math.random() * 400), 
-        y: Math.round(Math.random() * 400), 
-        width: NODE_WIDTH, 
-        height: 100, 
-        color: pickColor(), 
-        nodeType: "note" 
+    } catch {
+      createNodeMut.mutate({
+        canvasId: "default",
+        label: "New Card",
+        content: "",
+        x: Math.round(Math.random() * 400),
+        y: Math.round(Math.random() * 400),
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        color: pickColor(),
+        nodeType: "note",
       });
     }
   }, [createNodeMut, getViewport]);
 
-  const onDeleteSelected = () => {
-    const selectedNodes = nodes.filter(n => n.selected);
-    const selectedEdges = edges.filter(e => e.selected);
-    
-    onNodesDelete(selectedNodes);
-    onEdgesDelete(selectedEdges);
-    
-    // Optimistically remove from local state
-    setNodes(nds => nds.filter(n => !n.selected));
-    setEdges(eds => eds.filter(e => !e.selected));
-  };
+  const onDeleteSelected = useCallback(() => {
+    const selectedNodes = nodes.filter((n) => n.selected);
+    const selectedEdges = edges.filter((e) => e.selected);
 
-  const onEdgeDoubleClick = useCallback((event: React.MouseEvent, edge: Edge) => {
-    deleteEdgeMut.mutate(edge.id);
-    setEdges(eds => eds.filter(e => e.id !== edge.id));
-  }, [deleteEdgeMut, setEdges]);
+    if (selectedNodes.length > 0) {
+      onNodesDelete(selectedNodes);
+      setNodes((nds) => nds.filter((n) => !n.selected));
+    }
+    if (selectedEdges.length > 0) {
+      onEdgesDelete(selectedEdges);
+      setEdges((eds) => eds.filter((e) => !e.selected));
+    }
+  }, [nodes, edges, onNodesDelete, onEdgesDelete, setNodes, setEdges]);
+
+  const hasSelection =
+    nodes.some((n) => n.selected) || edges.some((e) => e.selected);
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <ReactFlow
@@ -333,70 +557,90 @@ function CanvasEngine() {
       connectionMode={ConnectionMode.Loose}
       snapToGrid
       snapGrid={[15, 15]}
-      proOptions={{ hideAttribution: true }}
       deleteKeyCode={["Backspace", "Delete"]}
       multiSelectionKeyCode={["Meta", "Control"]}
-      selectionKeyCode={["Shift"]}
+      selectionKeyCode="Shift"
+      proOptions={{ hideAttribution: true }}
     >
       <Background gap={20} size={1} color="hsl(var(--border))" />
       <Controls />
-      <Panel position="top-right" className="flex items-center gap-2 bg-background/80 backdrop-blur p-1 rounded-lg border shadow-sm">
-        <div className="flex bg-muted/50 rounded-md p-0.5 mr-1">
-          <Button 
-            variant={selectedEdgeType === "solid" ? "secondary" : "ghost"} 
-            size="sm" 
-            className="h-7 px-2 text-[10px]" 
-            onClick={() => setSelectedEdgeType("solid")}
-          >
-            Solid
-          </Button>
-          <Button 
-            variant={selectedEdgeType === "dotted" ? "secondary" : "ghost"} 
-            size="sm" 
-            className="h-7 px-2 text-[10px]" 
-            onClick={() => setSelectedEdgeType("dotted")}
-          >
-            Dotted
-          </Button>
+
+      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
+      <Panel
+        position="top-right"
+        className="flex items-center gap-2 bg-background/80 backdrop-blur p-1.5 rounded-lg border shadow-sm"
+      >
+        {/* Edge type selector: Solid | Dotted | Flowing */}
+        <div className="flex bg-muted/50 rounded-md p-0.5">
+          {(["solid", "dotted", "animated"] as EdgeStyleType[]).map((type) => (
+            <Button
+              key={type}
+              variant={selectedEdgeType === type ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2 text-[10px] capitalize"
+              onClick={() => setSelectedEdgeType(type)}
+            >
+              {type === "animated" ? "Flowing" : type}
+            </Button>
+          ))}
         </div>
-        <div className="w-px h-4 bg-border mx-1" />
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={onAddCard} 
+
+        <div className="w-px h-5 bg-border" />
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onAddCard}
           className="h-8 text-xs font-medium"
           disabled={createNodeMut.isPending}
         >
           {createNodeMut.isPending ? (
-            <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent animate-spin mr-1" />
+            <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin mr-1.5" />
           ) : (
-            <Plus className="h-3.5 w-3.5 mr-1" />
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
           )}
           Add Card
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => fitView({ duration: 800 })} className="h-8 text-xs font-medium">
-          <Maximize className="h-3.5 w-3.5 mr-1" /> Fit View
-        </Button>
-        <div className="w-px h-4 bg-border self-center mx-1" />
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          onClick={onDeleteSelected} 
-          className="h-8 text-xs font-medium text-destructive hover:text-destructive hover:bg-destructive/10" 
-          disabled={!nodes.some(n => n.selected) && !edges.some(e => e.selected)}
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => fitView({ padding: 0.2, duration: 500 })}
+          className="h-8 text-xs font-medium"
         >
-          <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+          <Maximize className="h-3.5 w-3.5 mr-1.5" />
+          Fit
+        </Button>
+
+        <div className="w-px h-5 bg-border" />
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onDeleteSelected}
+          className="h-8 text-xs font-medium border-destructive/50 text-destructive hover:text-destructive hover:bg-destructive/10"
+          disabled={!hasSelection}
+        >
+          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+          Delete
         </Button>
       </Panel>
-      <Panel position="top-left" className="bg-background/80 backdrop-blur px-3 py-1.5 rounded-lg border shadow-sm">
+
+      {/* ── Info panel ──────────────────────────────────────────────────── */}
+      <Panel
+        position="top-left"
+        className="bg-background/80 backdrop-blur px-3 py-1.5 rounded-lg border shadow-sm"
+      >
         <h1 className="text-sm font-bold tracking-tight">Personal Canvas</h1>
         <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold">
-          {nodes.length} cards • {edges.length} links
+          {nodes.length} cards &bull; {edges.length} links
         </p>
       </Panel>
     </ReactFlow>
   );
 }
+
+// ─── Export ───────────────────────────────────────────────────────────────────
 
 export default function CanvasContent() {
   return (

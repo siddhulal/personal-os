@@ -32,8 +32,8 @@ export async function updateCanvasNode(id: string, data: {
   noteId?: string;
   label?: string;
   content?: string;
-  x: number;
-  y: number;
+  x?: number;
+  y?: number;
   width?: number;
   height?: number;
   color?: string;
