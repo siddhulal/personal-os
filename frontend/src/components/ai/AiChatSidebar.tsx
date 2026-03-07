@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAiChat } from "@/lib/ai-chat-context";
 import { streamChat, fetchConversations, fetchConversation, deleteConversation } from "@/lib/api/ai";
 import api from "@/lib/api";
 import { AiMessageBubble } from "./AiMessageBubble";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +39,7 @@ import {
   Minimize2,
   Square,
   Save,
+  FolderKanban,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { AiChatMessage, AiConversation } from "@/types";
@@ -45,8 +48,14 @@ const CATEGORIES = ["BEHAVIORAL", "TECHNICAL", "SYSTEM_DESIGN", "CODING", "SITUA
 const DIFFICULTIES = ["EASY", "MEDIUM", "HARD"] as const;
 
 export function AiChatSidebar() {
-  const { isOpen, isExpanded, closeChat, toggleExpanded, currentContext } = useAiChat();
+  const { isOpen, isExpanded, closeChat, toggleExpanded, currentContext, canvasSaveHandler } = useAiChat();
   const queryClient = useQueryClient();
+  const pathname = usePathname();
+
+  // Show save actions based on current page context
+  const showSaveProject = pathname === "/projects";
+  const showSaveQuestion = pathname === "/interview";
+  const showSaveCanvas = pathname === "/notes/canvas";
 
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -62,6 +71,13 @@ export function AiChatSidebar() {
   const [saveDifficulty, setSaveDifficulty] = useState("MEDIUM");
   const [saveAnswerText, setSaveAnswerText] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Save as Project dialog state
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [projectStatus, setProjectStatus] = useState("PLANNING");
+  const [savingProject, setSavingProject] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -130,10 +146,31 @@ export function AiChatSidebar() {
     setIsStreaming(true);
     setStreamingContent("");
 
+    // When on canvas page, always add diagram generation context
+    let effectiveContext = currentContext;
+    if (showSaveCanvas) {
+      const canvasHint = `IMPORTANT: You are assisting on a visual canvas/diagram page. When the user asks about hierarchies, architectures, class structures, frameworks, or any topic that can be visualized, ALWAYS include a Mermaid diagram using \`\`\`mermaid code blocks.
+
+STRICT Mermaid syntax rules — follow EXACTLY:
+- Use flowchart TD for hierarchies/relationships
+- Node labels: A[Label Text] — square brackets only
+- Special chars in labels: A["Label (Text)"] — wrap in quotes
+- Subgraph names: subgraph SG_Name["Display Name"] — always use ID + label format
+- Edges: --> for solid, -.-> for dotted, -->|label| for labeled
+- Do NOT use <|--, <|.., or -- text --> syntax
+- Do NOT use semicolons or newlines inside labels
+- Keep node IDs short: A1, B2, etc.
+
+Keep text explanations brief — the diagram is the main output. The user can save your Mermaid diagram directly as interactive canvas nodes.`;
+      effectiveContext = effectiveContext
+        ? `${canvasHint}\n\nAdditional context: ${effectiveContext}`
+        : canvasHint;
+    }
+
     abortRef.current = streamChat(
       trimmed,
       conversationId,
-      currentContext,
+      effectiveContext,
       (token) => {
         setStreamingContent((prev) => prev + token);
       },
@@ -203,6 +240,48 @@ export function AiChatSidebar() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const handleSaveAsProject = (content: string) => {
+    // Try to extract a project name from the first line or bold text
+    const lines = content.split("\n").filter((l) => l.trim());
+    let name = "";
+    for (const line of lines) {
+      const boldMatch = line.match(/\*\*Project:\s*(.+?)\*\*/i) || line.match(/\*\*(.+?)\*\*/);
+      if (boldMatch) {
+        name = boldMatch[1].trim();
+        break;
+      }
+    }
+    if (!name && lines.length > 0) {
+      name = lines[0].replace(/^#+\s*/, "").replace(/\*\*/g, "").trim().slice(0, 100);
+    }
+    setProjectName(name);
+    setProjectDescription(content);
+    setProjectStatus("PLANNING");
+    setProjectDialogOpen(true);
+  };
+
+  const handleSaveProject = async () => {
+    if (!projectName.trim()) {
+      toast.error("Please enter a project name");
+      return;
+    }
+    setSavingProject(true);
+    try {
+      await api.post("/api/projects", {
+        name: projectName.trim(),
+        description: projectDescription.trim(),
+        status: projectStatus,
+      });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast.success("Project created successfully");
+      setProjectDialogOpen(false);
+    } catch {
+      toast.error("Failed to create project");
+    } finally {
+      setSavingProject(false);
     }
   };
 
@@ -332,7 +411,9 @@ export function AiChatSidebar() {
                   key={msg.id}
                   role={msg.role}
                   content={msg.content}
-                  onSaveAsQuestion={msg.role === "ASSISTANT" ? handleSaveAsQuestion : undefined}
+                  onSaveAsProject={msg.role === "ASSISTANT" && showSaveProject ? handleSaveAsProject : undefined}
+                  onSaveAsQuestion={msg.role === "ASSISTANT" && showSaveQuestion ? handleSaveAsQuestion : undefined}
+                  onSaveAsCanvas={msg.role === "ASSISTANT" && showSaveCanvas && canvasSaveHandler ? canvasSaveHandler : undefined}
                 />
               ))}
               {isStreaming && streamingContent && (
@@ -456,6 +537,67 @@ export function AiChatSidebar() {
                 <>
                   <Save className="w-4 h-4 mr-1.5" />
                   Save Question
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Save as Project Dialog */}
+      <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Save as Project</DialogTitle>
+            <DialogDescription>
+              Create a new project from this AI response. Edit the name and description as needed.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Project Name *</Label>
+              <Input
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Enter project name..."
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Status</Label>
+              <Select value={projectStatus} onValueChange={setProjectStatus}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PLANNING">Planning</SelectItem>
+                  <SelectItem value="ACTIVE">Active</SelectItem>
+                  <SelectItem value="ON_HOLD">On Hold</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Description (from AI response)</Label>
+              <Textarea
+                value={projectDescription}
+                onChange={(e) => setProjectDescription(e.target.value)}
+                rows={10}
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProjectDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveProject} disabled={savingProject || !projectName.trim()}>
+              {savingProject ? "Creating..." : (
+                <>
+                  <FolderKanban className="w-4 h-4 mr-1.5" />
+                  Create Project
                 </>
               )}
             </Button>

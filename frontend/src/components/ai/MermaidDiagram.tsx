@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ZoomIn, ZoomOut, RotateCcw, Download } from "lucide-react";
-import { sanitizeMermaid } from "@/lib/mermaid-utils";
+import { sanitizeMermaidAttempts } from "@/lib/mermaid-utils";
 
 interface MermaidDiagramProps {
   chart: string;
@@ -27,38 +27,73 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
     let cancelled = false;
 
     async function renderChart() {
-      // Use the robust shared sanitization logic
-      const sanitized = sanitizeMermaid(chart);
+      const mermaid = (await import("mermaid")).default;
+      const isDark = document.documentElement.classList.contains("dark");
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: isDark ? "dark" : "default",
+        securityLevel: "loose",
+        themeVariables: isDark ? {
+          primaryColor: "#6366f1",
+          primaryTextColor: "#f1f5f9",
+          primaryBorderColor: "#818cf8",
+          lineColor: "#94a3b8",
+          secondaryColor: "#1e293b",
+          tertiaryColor: "#0f172a",
+          noteBkgColor: "#1e293b",
+          noteTextColor: "#e2e8f0",
+          clusterBkg: "#1e293b",
+          clusterBorder: "#334155",
+          edgeLabelBackground: "#1e293b",
+        } : {
+          primaryColor: "#8b5cf6",
+          primaryTextColor: "#1e293b",
+          primaryBorderColor: "#7c3aed",
+          lineColor: "#64748b",
+          secondaryColor: "#ede9fe",
+          tertiaryColor: "#f5f3ff",
+          noteBkgColor: "#f5f3ff",
+          noteTextColor: "#1e293b",
+          clusterBkg: "#f8fafc",
+          clusterBorder: "#e2e8f0",
+        },
+      });
 
-      try {
-        const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: "default",
-          securityLevel: "loose",
-        });
+      // Strategy: try original first, then progressively more aggressive sanitizations.
+      const sanitized = sanitizeMermaidAttempts(chart);
+      const attempts = [
+        { label: "original", code: chart },
+        ...sanitized.map((code, i) => ({ label: `sanitized_${i}`, code })),
+      ];
 
-        const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const { svg: renderedSvg } = await mermaid.render(id, sanitized);
-        if (!cancelled) {
-          setSvg(renderedSvg);
-          setError("");
-        }
-      } catch (err) {
-        // Retry with original if sanitization caused issues
+      // Deduplicate attempts (skip any that match the original or a previous attempt)
+      const seen = new Set<string>();
+      const unique = attempts.filter((a) => {
+        const key = a.code.trim();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      for (let i = 0; i < unique.length; i++) {
         try {
-          const mermaid = (await import("mermaid")).default;
-          const id = `mermaid-retry-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          const { svg: renderedSvg } = await mermaid.render(id, chart);
+          const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const { svg: renderedSvg } = await mermaid.render(id, unique[i].code);
           if (!cancelled) {
             setSvg(renderedSvg);
             setError("");
           }
-        } catch (retryErr) {
-          if (!cancelled) {
-            setError("Failed to render diagram");
-            console.error("Mermaid render error:", retryErr);
+          return; // success — stop trying
+        } catch (err) {
+          // If this was the last attempt, show the error
+          if (i === unique.length - 1) {
+            if (!cancelled) {
+              setError("Failed to render diagram");
+              console.error("Mermaid render error:", err);
+              console.error("Attempted codes:", unique.map(a => `[${a.label}]:\n${a.code}`).join("\n\n"));
+            }
           }
+          // Otherwise, continue to next attempt
         }
       }
     }
@@ -97,8 +132,19 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
   if (error) {
     return (
       <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded p-3 text-sm text-red-600 dark:text-red-400">
-        {error}
-        <pre className="mt-2 text-xs overflow-x-auto bg-white/50 dark:bg-black/20 p-2 rounded">{chart}</pre>
+        <div className="flex items-center justify-between">
+          <span>{error}</span>
+          <button
+            className="text-xs underline opacity-60 hover:opacity-100"
+            onClick={() => {
+              // Copy the raw mermaid code for debugging
+              navigator.clipboard.writeText(chart);
+            }}
+          >
+            Copy source
+          </button>
+        </div>
+        <pre className="mt-2 text-xs overflow-x-auto bg-white/50 dark:bg-black/20 p-2 rounded max-h-[200px]">{chart}</pre>
       </div>
     );
   }

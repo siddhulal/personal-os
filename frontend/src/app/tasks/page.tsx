@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import api from "@/lib/api";
@@ -268,14 +268,10 @@ export default function TasksPage() {
 
   // ── AI floating button actions ──────────────────────────────────────────────
   const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
 
-  const registerAiActions = useCallback(() => {
-    const todoTasks = tasks.filter((t) => t.status === "TODO" || t.status === "IN_PROGRESS");
-    const taskSummary = todoTasks
-      .slice(0, 15)
-      .map((t) => `- [${t.priority}] ${t.title}${t.dueDate ? ` (due ${t.dueDate.split("T")[0]})` : ""}`)
-      .join("\n");
-
+  useEffect(() => {
     const actions: PageAiAction[] = [
       {
         label: "Create Task from Description",
@@ -292,6 +288,7 @@ export default function TasksPage() {
         action: "suggest_subtasks",
         icon: GitBranch,
         onAction: () => {
+          const todoTasks = tasksRef.current.filter((t) => t.status === "TODO" || t.status === "IN_PROGRESS");
           const firstTask = todoTasks[0];
           const context = firstTask
             ? `Break down this task into subtasks:\n\nTask: ${firstTask.title}\nDescription: ${firstTask.description || "N/A"}\nPriority: ${firstTask.priority}\n\nSuggest 3-5 concrete subtasks.`
@@ -304,6 +301,11 @@ export default function TasksPage() {
         action: "prioritize_tasks",
         icon: ArrowUpDown,
         onAction: () => {
+          const todoTasks = tasksRef.current.filter((t) => t.status === "TODO" || t.status === "IN_PROGRESS");
+          const taskSummary = todoTasks
+            .slice(0, 15)
+            .map((t) => `- [${t.priority}] ${t.title}${t.dueDate ? ` (due ${t.dueDate.split("T")[0]})` : ""}`)
+            .join("\n");
           openChat(
             `Help me prioritize my current tasks. Here are my TODO/In-Progress tasks:\n\n${taskSummary || "No tasks found."}\n\nPlease suggest a priority ordering and explain your reasoning.`
           );
@@ -314,6 +316,11 @@ export default function TasksPage() {
         action: "generate_daily_plan",
         icon: CalendarClock,
         onAction: () => {
+          const todoTasks = tasksRef.current.filter((t) => t.status === "TODO" || t.status === "IN_PROGRESS");
+          const taskSummary = todoTasks
+            .slice(0, 15)
+            .map((t) => `- [${t.priority}] ${t.title}${t.dueDate ? ` (due ${t.dueDate.split("T")[0]})` : ""}`)
+            .join("\n");
           openChat(
             `Create a daily plan from my current tasks. Here are my open tasks:\n\n${taskSummary || "No tasks found."}\n\nPlease organize these into a structured daily schedule with time blocks and suggested order.`
           );
@@ -321,12 +328,9 @@ export default function TasksPage() {
       },
     ];
     setPageActions(actions);
-  }, [tasks, setPageActions, openChat]);
-
-  useEffect(() => {
-    registerAiActions();
     return () => clearPageActions();
-  }, [registerAiActions, clearPageActions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AppShell>

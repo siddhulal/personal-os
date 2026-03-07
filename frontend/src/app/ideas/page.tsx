@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Lightbulb, Sparkles, FolderKanban } from "lucide-react";
 import api from "@/lib/api";
 import type { Idea, IdeaStatus, IdeaCategory, PageResponse } from "@/types";
 
@@ -260,6 +262,55 @@ export default function IdeasPage() {
       day: "numeric",
     });
   }
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const ideasRef = useRef(ideas);
+  ideasRef.current = ideas;
+
+  useEffect(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Expand Idea",
+        action: "expand_idea",
+        icon: Sparkles,
+        onAction: () => {
+          const first = ideasRef.current[0];
+          const context = first
+            ? `Expand on this idea and suggest next steps:\n\nIdea: ${first.title}\nDescription: ${first.description || "N/A"}\nCategory: ${first.category}\n\nPlease elaborate on this idea, identify potential challenges, and suggest 3-5 concrete next steps to make it happen.`
+            : "I have an idea I want to develop further. Describe your idea and I will help expand it with details, challenges, and next steps.";
+          openChat(context);
+        },
+      },
+      {
+        label: "Brainstorm Ideas",
+        action: "brainstorm",
+        icon: Lightbulb,
+        onAction: () => {
+          const existing = ideasRef.current.slice(0, 10)
+            .map((i) => `- ${i.title} (${i.category})`).join("\n");
+          openChat(
+            `Help me brainstorm new ideas. Here are my existing ideas:\n\n${existing || "None yet."}\n\nSuggest 5 creative new ideas that complement or build upon my existing ones. For each, give a title, brief description, and category.`
+          );
+        },
+      },
+      {
+        label: "Turn Idea into Project",
+        action: "idea_to_project",
+        icon: FolderKanban,
+        onAction: () => {
+          const first = ideasRef.current[0];
+          const context = first
+            ? `Turn this idea into a structured project plan:\n\nIdea: ${first.title}\nDescription: ${first.description || "N/A"}\n\nCreate a project plan with phases, milestones, required resources, and a timeline. Format it so I can save it as a project.`
+            : "I want to turn an idea into a project. Describe your idea and I will create a structured project plan from it.";
+          openChat(context);
+        },
+      },
+    ];
+    setPageActions(actions);
+    return () => clearPageActions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AppShell>

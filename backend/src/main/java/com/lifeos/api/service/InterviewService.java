@@ -124,6 +124,20 @@ public class InterviewService {
         return mapToAnswerResponse(answer);
     }
 
+    @Transactional
+    public void deleteAnswer(UUID questionId, UUID answerId) {
+        findQuestionByIdAndUser(questionId);
+        InterviewAnswer answer = answerRepository.findById(answerId)
+            .orElseThrow(() -> new ResourceNotFoundException("InterviewAnswer", "id", answerId));
+
+        if (!answer.getQuestion().getId().equals(questionId) || answer.getDeletedAt() != null) {
+            throw new ResourceNotFoundException("InterviewAnswer", "id", answerId);
+        }
+
+        answer.softDelete();
+        answerRepository.save(answer);
+    }
+
     // --- Practice session ---
 
     @Transactional

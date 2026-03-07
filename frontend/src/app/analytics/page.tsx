@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -117,6 +118,47 @@ export default function AnalyticsPage() {
       (max, w) => Math.max(max, w.productivity),
       0
     ) ?? 1;
+
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const analyticsRef = useRef(analytics);
+  analyticsRef.current = analytics;
+
+  useEffect(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Analyze My Productivity",
+        action: "analyze_productivity",
+        icon: TrendingUp,
+        onAction: () => {
+          const a = analyticsRef.current;
+          const summary = a
+            ? `Tasks completed: ${a.completedTasks}/${a.totalTasks}\nNotes written: ${a.totalNotes}\nFlashcards: ${a.totalFlashcards} (${a.flashcardsDue} due)\nFocus minutes: ${a.totalFocusMinutes}\nHabit completion rate: ${Math.round(a.habitCompletionRate)}%\nCurrent streak: ${a.currentStreak} days\nPomodoro sessions this week: ${a.pomodoroSessionsThisWeek}`
+            : "No analytics data available yet.";
+          openChat(
+            `Analyze my productivity data and provide insights:\n\n${summary}\n\nIdentify my strongest areas, areas for improvement, and suggest specific actionable changes to boost my productivity.`
+          );
+        },
+      },
+      {
+        label: "Set Productivity Goals",
+        action: "set_goals",
+        icon: Target,
+        onAction: () => {
+          const a = analyticsRef.current;
+          const summary = a
+            ? `Current stats:\n- Tasks: ${a.completedTasks}/${a.totalTasks} completed\n- Focus minutes: ${a.totalFocusMinutes}\n- Habit completion: ${Math.round(a.habitCompletionRate)}%\n- Current streak: ${a.currentStreak} days\n- Notes: ${a.totalNotes}`
+            : "No data yet.";
+          openChat(
+            `Based on my current productivity levels, suggest realistic weekly productivity goals:\n\n${summary}\n\nFor each goal, explain why it matters and how to achieve it.`
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+    return () => clearPageActions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AppShell>

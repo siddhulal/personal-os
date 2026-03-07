@@ -23,7 +23,7 @@ public class AiConversation extends BaseEntity {
     @Column(nullable = false)
     private String title;
 
-    @Column
+    @Column(columnDefinition = "TEXT")
     private String context;
 
     @JsonIgnore

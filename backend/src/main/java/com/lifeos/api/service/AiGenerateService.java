@@ -75,12 +75,16 @@ public class AiGenerateService {
                 "Generate a Mermaid diagram (%s) for the topic '%s'. " +
                 "The diagram should visually represent the key concepts, relationships, or processes involved. " +
                 "Topic description: %s\n\n" +
-                "IMPORTANT Mermaid syntax rules:\n" +
-                "- Use ONLY square brackets for node labels: A[Label Text]\n" +
-                "- If a label contains parentheses, wrap it in quotes: A[\"Text (example)\"]\n" +
+                "STRICT Mermaid syntax rules — follow these EXACTLY to avoid render failures:\n" +
+                "- Node labels: use square brackets only: A[Label Text]\n" +
+                "- If a label has special characters like ( ) & < > : wrap in quotes: A[\"Label (Text)\"]\n" +
+                "- Subgraph names: use ID + label format: subgraph SG_Name[\"Display Name\"]\n" +
+                "- Do NOT put periods, parentheses, or special chars in bare subgraph names\n" +
+                "- Edges: use --> for solid arrows, -.-> for dotted arrows, -->|label| for labeled edges\n" +
+                "- Do NOT use <|--, <|.., or -- text --> edge syntax\n" +
                 "- Do NOT use semicolons at end of lines\n" +
-                "- Do NOT use special characters like &, <, > in labels without quotes\n" +
-                "- Keep node IDs short (A, B, C or A1, A2, etc.)\n\n" +
+                "- Do NOT put newlines inside quoted labels\n" +
+                "- Keep node IDs short and alphanumeric (A, B, A1, A2, etc.)\n\n" +
                 "Return ONLY the Mermaid diagram code wrapped in a ```mermaid code block. " +
                 "Make the diagram comprehensive but readable. Use descriptive labels.",
                 type,
@@ -247,11 +251,17 @@ public class AiGenerateService {
                     "Provide answers at the end. Use markdown formatting:\n\n" + workingText;
             case "generate_diagram" -> contextPrefix +
                     "Create a clear Mermaid.js diagram that explains the following concepts visually. " +
-                    "Use 'flowchart TD', 'sequenceDiagram', or 'mindmap' as appropriate. " +
-                    "IMPORTANT Mermaid syntax rules for reliability:\n" +
-                    "- Use ONLY square brackets for node labels: A[Label Text]\n" +
-                    "- If a label contains special characters like ( ) & < > , . - : , wrap the label in double quotes: A[\"Label (Text)\"]\n" +
+                    "Use 'flowchart TD' for hierarchies/relationships, 'sequenceDiagram' for flows, or 'mindmap' for overviews.\n\n" +
+                    "STRICT Mermaid syntax rules — follow these EXACTLY to avoid render failures:\n" +
+                    "- Node labels: use square brackets only: A[Label Text]\n" +
+                    "- If a label has special characters like ( ) & < > : wrap in quotes: A[\"Label (Text)\"]\n" +
+                    "- Subgraph names: use ID + label format: subgraph SG_Name[\"Display Name\"]\n" +
+                    "- Do NOT put periods, parentheses, or special chars in bare subgraph names\n" +
+                    "- Edges: use --> for solid arrows, -.-> for dotted arrows, -->|label| for labeled edges\n" +
+                    "- Do NOT use <|--, <|.., or -- text --> edge syntax\n" +
                     "- Do NOT use semicolons at end of lines\n" +
+                    "- Do NOT put newlines inside quoted labels\n" +
+                    "- Keep node IDs short and alphanumeric (A1, B2, etc.)\n" +
                     "- Return ONLY the Mermaid code block starting with ```mermaid and ending with ```.\n\n" +
                     "Text:\n" + workingText;
             default -> contextPrefix + "Process the following text:\n\n" + workingText;

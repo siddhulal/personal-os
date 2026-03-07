@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -14,6 +15,21 @@ import {
   Sparkles,
   GitBranch,
   Loader2,
+  CheckCircle2,
+  Circle,
+  Clock,
+  BookOpen,
+  Video,
+  FileText,
+  Link2,
+  Play,
+  SkipForward,
+  Target,
+  TrendingUp,
+  Zap,
+  ExternalLink,
+  MoreHorizontal,
+  GraduationCap,
 } from "lucide-react";
 
 import { AppShell } from "@/components/layout/app-shell";
@@ -22,7 +38,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   Card,
   CardContent,
@@ -42,6 +57,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 import api from "@/lib/api";
@@ -50,31 +71,171 @@ import { createPage, getOrCreateDefaultNotebook } from "@/lib/api/notebooks";
 import { AiResultDialog } from "@/components/ai/AiResultDialog";
 import type { LearningRoadmap, LearningTopic, TopicStatus } from "@/types";
 
+// ==================== Status Configuration ====================
+
 const TOPIC_STATUS_CONFIG: Record<
   TopicStatus,
-  { label: string; color: string; next: TopicStatus }
+  { label: string; icon: typeof Circle; color: string; bgColor: string; ringColor: string; next: TopicStatus }
 > = {
   NOT_STARTED: {
     label: "Not Started",
-    color: "bg-gray-500/15 text-gray-700 dark:text-gray-400 border-gray-300 dark:border-gray-500/30",
+    icon: Circle,
+    color: "text-gray-400 dark:text-gray-500",
+    bgColor: "bg-gray-100 dark:bg-gray-800/50",
+    ringColor: "stroke-gray-300 dark:stroke-gray-600",
     next: "IN_PROGRESS",
   },
   IN_PROGRESS: {
     label: "In Progress",
-    color: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-300 dark:border-yellow-500/30",
+    icon: Play,
+    color: "text-blue-500 dark:text-blue-400",
+    bgColor: "bg-blue-50 dark:bg-blue-950/30",
+    ringColor: "stroke-blue-500 dark:stroke-blue-400",
     next: "COMPLETED",
   },
   COMPLETED: {
     label: "Completed",
-    color: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-300 dark:border-green-500/30",
+    icon: CheckCircle2,
+    color: "text-emerald-500 dark:text-emerald-400",
+    bgColor: "bg-emerald-50 dark:bg-emerald-950/30",
+    ringColor: "stroke-emerald-500 dark:stroke-emerald-400",
     next: "SKIPPED",
   },
   SKIPPED: {
     label: "Skipped",
-    color: "bg-slate-500/15 text-slate-700 dark:text-slate-400 border-slate-300 dark:border-slate-500/30",
+    icon: SkipForward,
+    color: "text-slate-400 dark:text-slate-500",
+    bgColor: "bg-slate-100 dark:bg-slate-800/50",
+    ringColor: "stroke-slate-400 dark:stroke-slate-500",
     next: "NOT_STARTED",
   },
 };
+
+// ==================== Helpers ====================
+
+function flattenTopics(topics: LearningTopic[]): LearningTopic[] {
+  const result: LearningTopic[] = [];
+  for (const topic of topics) {
+    result.push(topic);
+    if (topic.subtopics?.length) {
+      result.push(...flattenTopics(topic.subtopics));
+    }
+  }
+  return result;
+}
+
+function getResourceIcon(resource: string) {
+  const lower = resource.toLowerCase();
+  if (lower.includes("youtube") || lower.includes("video") || lower.includes("vimeo")) return Video;
+  if (lower.includes("docs") || lower.includes("documentation") || lower.includes("wiki")) return BookOpen;
+  if (lower.includes("article") || lower.includes("blog") || lower.includes("medium") || lower.includes("dev.to")) return FileText;
+  if (lower.startsWith("http")) return ExternalLink;
+  return Link2;
+}
+
+function getResourceLabel(resource: string): string {
+  try {
+    const url = new URL(resource);
+    return url.hostname.replace("www.", "");
+  } catch {
+    return resource.length > 40 ? resource.slice(0, 37) + "..." : resource;
+  }
+}
+
+function getSectionProgress(topic: LearningTopic): { completed: number; total: number } {
+  if (!topic.subtopics?.length) {
+    return {
+      completed: topic.status === "COMPLETED" ? 1 : 0,
+      total: 1,
+    };
+  }
+  let completed = 0;
+  let total = 0;
+  for (const sub of topic.subtopics) {
+    const subProgress = getSectionProgress(sub);
+    completed += subProgress.completed;
+    total += subProgress.total;
+  }
+  return { completed, total };
+}
+
+// ==================== Circular Progress Component ====================
+
+function CircularProgress({
+  value,
+  size = 120,
+  strokeWidth = 8,
+  className = "",
+  children,
+}: {
+  value: number;
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (value / 100) * circumference;
+
+  return (
+    <div className={`relative inline-flex items-center justify-center ${className}`}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          className="text-muted/20"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="text-primary transition-all duration-700 ease-out"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ==================== Mini Progress Ring for Sections ====================
+
+function MiniProgressRing({ completed, total }: { completed: number; total: number }) {
+  const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+  const radius = 10;
+  const circumference = radius * 2 * Math.PI;
+  const offset = circumference - (pct / 100) * circumference;
+
+  if (total === 0) return null;
+
+  return (
+    <div className="relative inline-flex items-center justify-center" title={`${completed}/${total} completed`}>
+      <svg width={28} height={28} className="-rotate-90">
+        <circle cx={14} cy={14} r={radius} fill="none" strokeWidth={3} className="stroke-muted/20" />
+        <circle
+          cx={14} cy={14} r={radius} fill="none" strokeWidth={3}
+          strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
+          className={pct === 100 ? "stroke-emerald-500" : "stroke-blue-500"}
+        />
+      </svg>
+      <span className="absolute text-[8px] font-bold text-muted-foreground">{pct}%</span>
+    </div>
+  );
+}
+
+// ==================== Main Component ====================
 
 export default function RoadmapDetailPage() {
   const params = useParams();
@@ -104,8 +265,7 @@ export default function RoadmapDetailPage() {
   const [deleteTopicDialogOpen, setDeleteTopicDialogOpen] = useState(false);
   const [topicToDelete, setTopicToDelete] = useState<LearningTopic | null>(null);
 
-  // Expanded state for notes and subtopics
-  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  // Expanded state for subtopics
   const [collapsedParents, setCollapsedParents] = useState<Set<string>>(new Set());
 
   // AI state
@@ -129,7 +289,33 @@ export default function RoadmapDetailPage() {
     },
   });
 
-  // ==================== Roadmap mutations ====================
+  // Computed stats
+  const stats = useMemo(() => {
+    if (!roadmap) return null;
+    const allTopics = flattenTopics(roadmap.topics ?? []);
+    const completed = allTopics.filter((t) => t.status === "COMPLETED").length;
+    const inProgress = allTopics.filter((t) => t.status === "IN_PROGRESS").length;
+    const notStarted = allTopics.filter((t) => t.status === "NOT_STARTED").length;
+    const skipped = allTopics.filter((t) => t.status === "SKIPPED").length;
+    const totalEst = allTopics.reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0);
+    const totalActual = allTopics.reduce((sum, t) => sum + (t.actualHours ?? 0), 0);
+    const total = allTopics.length;
+    const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
+    return { completed, inProgress, notStarted, skipped, totalEst, totalActual, total, progress };
+  }, [roadmap]);
+
+  // Find "next step" — the first IN_PROGRESS topic, or first NOT_STARTED topic
+  const nextStepId = useMemo(() => {
+    if (!roadmap) return null;
+    const allTopics = flattenTopics(roadmap.topics ?? []);
+    const sorted = allTopics.sort((a, b) => a.orderIndex - b.orderIndex);
+    const inProgress = sorted.find((t) => t.status === "IN_PROGRESS");
+    if (inProgress) return inProgress.id;
+    const notStarted = sorted.find((t) => t.status === "NOT_STARTED");
+    return notStarted?.id ?? null;
+  }, [roadmap]);
+
+  // ==================== Mutations ====================
 
   const updateRoadmapMutation = useMutation({
     mutationFn: async (data: { title: string; description: string | null }) => {
@@ -157,8 +343,6 @@ export default function RoadmapDetailPage() {
     onError: () => toast.error("Failed to delete roadmap"),
   });
 
-  // ==================== Topic mutations ====================
-
   const createTopicMutation = useMutation({
     mutationFn: async (data: {
       title: string;
@@ -174,7 +358,7 @@ export default function RoadmapDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["roadmap", roadmapId] });
-      toast.success("Topic added successfully");
+      toast.success("Topic added");
       resetTopicDialog();
     },
     onError: () => toast.error("Failed to add topic"),
@@ -190,7 +374,7 @@ export default function RoadmapDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["roadmap", roadmapId] });
-      toast.success("Topic updated successfully");
+      toast.success("Topic updated");
       resetTopicDialog();
     },
     onError: () => toast.error("Failed to update topic"),
@@ -204,7 +388,7 @@ export default function RoadmapDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["roadmap", roadmapId] });
     },
-    onError: () => toast.error("Failed to update topic status"),
+    onError: () => toast.error("Failed to update status"),
   });
 
   const deleteTopicMutation = useMutation({
@@ -213,7 +397,7 @@ export default function RoadmapDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["roadmap", roadmapId] });
-      toast.success("Topic deleted successfully");
+      toast.success("Topic deleted");
       setDeleteTopicDialogOpen(false);
       setTopicToDelete(null);
     },
@@ -248,13 +432,14 @@ export default function RoadmapDetailPage() {
     setTopicDialogOpen(true);
   }
 
-  function openAddTopicDialog() {
+  function openAddTopicDialog(parentId?: string) {
     resetTopicDialog();
     const allTopics = flattenTopics(roadmap?.topics ?? []);
     const nextIndex = allTopics.length > 0
       ? Math.max(...allTopics.map((t) => t.orderIndex)) + 1
       : 0;
     setTopicOrderIndex(nextIndex);
+    if (parentId) setTopicParentId(parentId);
     setTopicDialogOpen(true);
   }
 
@@ -291,24 +476,8 @@ export default function RoadmapDetailPage() {
     setTopicResources(topicResources.filter((_, i) => i !== index));
   }
 
-  function handleCycleStatus(topic: LearningTopic) {
-    const nextStatus = TOPIC_STATUS_CONFIG[topic.status].next;
-    updateTopicStatusMutation.mutate({ topicId: topic.id, status: nextStatus, title: topic.title });
-  }
-
-  function handleConfirmDeleteTopic() {
-    if (topicToDelete) {
-      deleteTopicMutation.mutate(topicToDelete.id);
-    }
-  }
-
-  function toggleNotes(topicId: string) {
-    setExpandedNotes((prev) => {
-      const next = new Set(prev);
-      if (next.has(topicId)) next.delete(topicId);
-      else next.add(topicId);
-      return next;
-    });
+  function handleSetStatus(topic: LearningTopic, status: TopicStatus) {
+    updateTopicStatusMutation.mutate({ topicId: topic.id, status, title: topic.title });
   }
 
   function toggleParentCollapse(topicId: string) {
@@ -320,11 +489,6 @@ export default function RoadmapDetailPage() {
     });
   }
 
-  function getOverallProgress(): number {
-    if (!roadmap || roadmap.totalTopics === 0) return 0;
-    return Math.round((roadmap.completedTopics / roadmap.totalTopics) * 100);
-  }
-
   function openEditRoadmapDialog() {
     if (roadmap) {
       setRoadmapTitle(roadmap.title);
@@ -333,19 +497,6 @@ export default function RoadmapDetailPage() {
     }
   }
 
-  // Flatten topics tree for getting all topics
-  function flattenTopics(topics: LearningTopic[]): LearningTopic[] {
-    const result: LearningTopic[] = [];
-    for (const topic of topics) {
-      result.push(topic);
-      if (topic.subtopics?.length) {
-        result.push(...flattenTopics(topic.subtopics));
-      }
-    }
-    return result;
-  }
-
-  // Get top-level topics for parent selection
   function getTopLevelTopics(): LearningTopic[] {
     if (!roadmap) return [];
     return roadmap.topics.filter((t) => !editingTopic || t.id !== editingTopic.id);
@@ -391,152 +542,225 @@ export default function RoadmapDetailPage() {
     }
   }
 
-  // ==================== Topic Rendering ====================
+  // ==================== AI Page Actions ====================
+
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const roadmapRef = useRef(roadmap);
+  roadmapRef.current = roadmap;
+
+  useEffect(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Explain Topic",
+        action: "explain_topic",
+        icon: GraduationCap,
+        onAction: () => {
+          const topics = flattenTopics(roadmapRef.current?.topics ?? [])
+            .slice(0, 15)
+            .map((t) => `- ${t.title} (${t.status})`)
+            .join("\n");
+          openChat(
+            `Here are my learning topics:\n${topics}\n\nPick any topic I'm working on and explain it in depth with examples, key concepts, and common pitfalls.`
+          );
+        },
+      },
+      {
+        label: "Suggest Next Steps",
+        action: "suggest_next",
+        icon: TrendingUp,
+        onAction: () => {
+          const topics = flattenTopics(roadmapRef.current?.topics ?? [])
+            .map((t) => `- ${t.title} (${t.status})`)
+            .join("\n");
+          openChat(
+            `Based on my roadmap "${roadmapRef.current?.title}":\n${topics}\n\nWhat should I focus on next? Suggest the optimal learning order and explain why.`
+          );
+        },
+      },
+      {
+        label: "Add Subtopics",
+        action: "add_subtopics",
+        icon: Sparkles,
+        onAction: () => {
+          const topics = flattenTopics(roadmapRef.current?.topics ?? [])
+            .slice(0, 10)
+            .map((t) => `- ${t.title}`)
+            .join("\n");
+          openChat(
+            `My roadmap "${roadmapRef.current?.title}" has these topics:\n${topics}\n\nSuggest detailed subtopics for each main topic, with estimated hours per subtopic.`
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+    return () => clearPageActions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ==================== Topic Card ====================
 
   function renderTopicCard(topic: LearningTopic, depth: number = 0) {
     const statusConfig = TOPIC_STATUS_CONFIG[topic.status];
-    const isNotesExpanded = expandedNotes.has(topic.id);
+    const StatusIcon = statusConfig.icon;
     const hasSubtopics = topic.subtopics && topic.subtopics.length > 0;
     const isCollapsed = collapsedParents.has(topic.id);
+    const isNextStep = topic.id === nextStepId;
+    const sectionProg = hasSubtopics ? getSectionProgress(topic) : null;
 
     return (
-      <div key={topic.id} style={{ marginLeft: depth > 0 ? `${depth * 1.5}rem` : undefined }}>
-        <Card className={depth > 0 ? "border-l-2 border-l-primary/20" : ""}>
-          <CardContent className="py-4">
-            <div className="space-y-3">
-              {/* Topic header row */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  {/* Collapse toggle for parents */}
-                  {hasSubtopics ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0 mt-0.5"
-                      onClick={() => toggleParentCollapse(topic.id)}
-                    >
-                      {isCollapsed ? (
-                        <ChevronRight className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </Button>
-                  ) : (
-                    <div className="w-6 shrink-0" />
-                  )}
-                  <Badge
-                    variant="outline"
-                    className={`cursor-pointer shrink-0 mt-0.5 ${statusConfig.color}`}
-                    onClick={() => handleCycleStatus(topic)}
-                    title={`Click to change status to ${TOPIC_STATUS_CONFIG[statusConfig.next].label}`}
+      <div key={topic.id}>
+        <div
+          className={`group relative rounded-lg border transition-all duration-200 ${
+            isNextStep
+              ? "border-primary/50 bg-primary/[0.03] shadow-sm shadow-primary/10 ring-1 ring-primary/20"
+              : "border-border/60 hover:border-border bg-card hover:shadow-sm"
+          } ${depth > 0 ? "ml-6 border-l-2 border-l-primary/15" : ""}`}
+        >
+          {/* Next step indicator */}
+          {isNextStep && (
+            <div className="absolute -top-2.5 left-4 px-2 py-0.5 bg-primary text-primary-foreground text-[10px] font-semibold rounded-full uppercase tracking-wider">
+              Next Step
+            </div>
+          )}
+
+          <div className={`p-4 ${isNextStep ? "pt-5" : ""}`}>
+            <div className="flex items-start gap-3">
+              {/* Status icon - clickable to cycle */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className={`mt-0.5 shrink-0 transition-transform hover:scale-110 ${statusConfig.color}`}
+                    title={`Status: ${statusConfig.label} (click to change)`}
                   >
-                    {statusConfig.label}
-                  </Badge>
+                    <StatusIcon className="h-5 w-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-40">
+                  {(Object.entries(TOPIC_STATUS_CONFIG) as [TopicStatus, typeof statusConfig][]).map(([status, config]) => {
+                    const Icon = config.icon;
+                    return (
+                      <DropdownMenuItem
+                        key={status}
+                        onClick={() => handleSetStatus(topic, status)}
+                        className={topic.status === status ? "bg-accent" : ""}
+                      >
+                        <Icon className={`h-4 w-4 mr-2 ${config.color}`} />
+                        {config.label}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Topic content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-medium leading-tight">{topic.title}</h3>
+                    <div className="flex items-center gap-2">
+                      {hasSubtopics && (
+                        <button
+                          onClick={() => toggleParentCollapse(topic.id)}
+                          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </button>
+                      )}
+                      <h3 className={`font-medium leading-snug ${
+                        topic.status === "COMPLETED" ? "line-through text-muted-foreground" : ""
+                      } ${topic.status === "SKIPPED" ? "text-muted-foreground" : ""}`}>
+                        {topic.title}
+                      </h3>
+                      {sectionProg && <MiniProgressRing completed={sectionProg.completed} total={sectionProg.total} />}
+                    </div>
                     {topic.description && (
-                      <p className="text-sm text-muted-foreground mt-1">{topic.description}</p>
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{topic.description}</p>
                     )}
                   </div>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-purple-600 hover:text-purple-700"
-                    onClick={() => handleGenerateExamples(topic)}
-                    disabled={aiLoadingTopicId === topic.id}
-                    title="Generate code examples with AI"
-                  >
-                    {aiLoadingTopicId === topic.id && aiLoadingType === "examples" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-blue-600 hover:text-blue-700"
-                    onClick={() => handleGenerateDiagram(topic)}
-                    disabled={aiLoadingTopicId === topic.id}
-                    title="Generate diagram with AI"
-                  >
-                    {aiLoadingTopicId === topic.id && aiLoadingType === "diagram" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <GitBranch className="h-4 w-4" />
-                    )}
-                  </Button>
-                  {topic.notes && (
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => toggleNotes(topic.id)}
-                      title={isNotesExpanded ? "Collapse notes" : "Expand notes"}
+                      variant="ghost" size="icon" className="h-7 w-7 text-purple-500 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30"
+                      onClick={() => handleGenerateExamples(topic)}
+                      disabled={aiLoadingTopicId === topic.id}
+                      title="AI Examples"
                     >
-                      {isNotesExpanded ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
+                      {aiLoadingTopicId === topic.id && aiLoadingType === "examples" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                     </Button>
-                  )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditTopicDialog(topic)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => {
-                      setTopicToDelete(topic);
-                      setDeleteTopicDialogOpen(true);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                      onClick={() => handleGenerateDiagram(topic)}
+                      disabled={aiLoadingTopicId === topic.id}
+                      title="AI Diagram"
+                    >
+                      {aiLoadingTopicId === topic.id && aiLoadingType === "diagram" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GitBranch className="h-3.5 w-3.5" />}
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditTopicDialog(topic)}>
+                          <Pencil className="h-4 w-4 mr-2" /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openAddTopicDialog(topic.id)}>
+                          <Plus className="h-4 w-4 mr-2" /> Add Subtopic
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => { setTopicToDelete(topic); setDeleteTopicDialogOpen(true); }}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
-              </div>
 
-              {/* Expandable notes */}
-              {topic.notes && isNotesExpanded && (
-                <div className="ml-0 sm:ml-12 rounded-md bg-muted p-3">
-                  <p className="text-sm whitespace-pre-wrap">{topic.notes}</p>
-                </div>
-              )}
-
-              {/* Resources */}
-              {topic.resources && topic.resources.length > 0 && (
-                <div className="ml-0 sm:ml-12">
-                  <p className="text-xs font-medium text-muted-foreground mb-1">Resources:</p>
-                  <ul className="list-disc list-inside space-y-0.5">
-                    {topic.resources.map((resource, idx) => (
-                      <li key={idx} className="text-xs text-muted-foreground">
-                        {resource.startsWith("http") ? (
-                          <a href={resource} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                            {resource}
-                          </a>
-                        ) : (
-                          resource
+                {/* Meta row: time + resources */}
+                {((topic.estimatedHours !== null && topic.estimatedHours > 0) || (topic.resources && topic.resources.length > 0)) && (
+                  <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                    {topic.estimatedHours !== null && topic.estimatedHours > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-muted/50 rounded-full px-2 py-0.5">
+                        <Clock className="h-3 w-3" />
+                        {topic.estimatedHours}h est.
+                        {topic.actualHours !== null && topic.actualHours > 0 && (
+                          <span className="text-foreground font-medium">/ {topic.actualHours}h done</span>
                         )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                      </span>
+                    )}
+                    {topic.resources && topic.resources.map((resource, idx) => {
+                      const Icon = getResourceIcon(resource);
+                      return (
+                        <a
+                          key={idx}
+                          href={resource.startsWith("http") ? resource : undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 transition-colors ${
+                            resource.startsWith("http")
+                              ? "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-950/50"
+                              : "bg-muted/50 text-muted-foreground"
+                          }`}
+                        >
+                          <Icon className="h-3 w-3" />
+                          {getResourceLabel(resource)}
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
 
-              {/* Time tracking */}
-              {(topic.estimatedHours !== null || topic.actualHours !== null) && (
-                <div className="ml-0 sm:ml-12 flex gap-4 text-xs text-muted-foreground">
-                  {topic.estimatedHours !== null && <span>Estimated: {topic.estimatedHours}h</span>}
-                  {topic.actualHours !== null && <span>Actual: {topic.actualHours}h</span>}
-                </div>
-              )}
+                {/* Notes preview */}
+                {topic.notes && (
+                  <p className="text-xs text-muted-foreground mt-2 line-clamp-1 italic">{topic.notes}</p>
+                )}
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {/* Render subtopics */}
         {hasSubtopics && !isCollapsed && (
@@ -548,19 +772,21 @@ export default function RoadmapDetailPage() {
     );
   }
 
+  // ==================== Render ====================
+
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="space-y-6 ">
         {/* Back button */}
-        <Button variant="ghost" onClick={() => router.push("/learning")} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={() => router.push("/learning")} className="gap-2 -ml-2">
           <ArrowLeft className="h-4 w-4" />
-          Back to Learning
+          Learning
         </Button>
 
         {/* Loading state */}
         {isLoading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         )}
 
@@ -574,70 +800,111 @@ export default function RoadmapDetailPage() {
         )}
 
         {/* Roadmap content */}
-        {!isLoading && !error && roadmap && (
+        {!isLoading && !error && roadmap && stats && (
           <>
-            {/* Header with edit/delete */}
+            {/* Header */}
             <div className="flex items-start justify-between gap-4">
-              <div className="space-y-2 flex-1">
-                <h1 className="text-3xl font-bold tracking-tight">{roadmap.title}</h1>
+              <div className="space-y-1 flex-1">
+                <h1 className="text-2xl font-bold tracking-tight">{roadmap.title}</h1>
                 {roadmap.description && (
-                  <p className="text-muted-foreground">{roadmap.description}</p>
+                  <p className="text-muted-foreground text-sm">{roadmap.description}</p>
                 )}
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <Button variant="outline" size="sm" onClick={openEditRoadmapDialog}>
-                  <Pencil className="h-4 w-4 mr-2" />
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" />
                   Edit
                 </Button>
                 <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteRoadmapOpen(true)}>
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
 
-            {/* Overall progress */}
-            <Card>
-              <CardContent className="py-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">Overall Progress</span>
-                    <span className="text-muted-foreground">
-                      {roadmap.completedTopics}/{roadmap.totalTopics} topics completed ({getOverallProgress()}%)
-                    </span>
+            {/* Stats Dashboard */}
+            <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-6">
+              {/* Circular Progress */}
+              <div className="flex items-center justify-center md:justify-start">
+                <CircularProgress value={stats.progress} size={140} strokeWidth={10}>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold">{stats.progress}%</div>
+                    <div className="text-xs text-muted-foreground">Complete</div>
                   </div>
-                  <Progress value={getOverallProgress()} className="h-3" />
+                </CircularProgress>
+              </div>
+
+              {/* Stats Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span className="text-xs font-medium">Completed</span>
+                  </div>
+                  <div className="mt-1.5 text-2xl font-bold text-emerald-700 dark:text-emerald-300">{stats.completed}</div>
+                  <div className="text-xs text-emerald-600/70 dark:text-emerald-400/70">of {stats.total} topics</div>
                 </div>
-              </CardContent>
-            </Card>
+
+                <div className="rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                  <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                    <Play className="h-4 w-4" />
+                    <span className="text-xs font-medium">In Progress</span>
+                  </div>
+                  <div className="mt-1.5 text-2xl font-bold text-blue-700 dark:text-blue-300">{stats.inProgress}</div>
+                  <div className="text-xs text-blue-600/70 dark:text-blue-400/70">active now</div>
+                </div>
+
+                <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                    <Target className="h-4 w-4" />
+                    <span className="text-xs font-medium">Remaining</span>
+                  </div>
+                  <div className="mt-1.5 text-2xl font-bold text-amber-700 dark:text-amber-300">{stats.notStarted}</div>
+                  <div className="text-xs text-amber-600/70 dark:text-amber-400/70">to start</div>
+                </div>
+
+                <div className="rounded-lg border border-violet-200 dark:border-violet-800/50 bg-violet-50/50 dark:bg-violet-950/20 p-3">
+                  <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400">
+                    <Clock className="h-4 w-4" />
+                    <span className="text-xs font-medium">Time</span>
+                  </div>
+                  <div className="mt-1.5 text-2xl font-bold text-violet-700 dark:text-violet-300">
+                    {stats.totalActual > 0 ? `${stats.totalActual}h` : "0h"}
+                  </div>
+                  <div className="text-xs text-violet-600/70 dark:text-violet-400/70">
+                    {stats.totalEst > 0 ? `of ${stats.totalEst}h est.` : "tracked"}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Topics section */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Topics</h2>
-                <Button onClick={openAddTopicDialog}>
-                  <Plus className="h-4 w-4 mr-2" />
+                <h2 className="text-lg font-semibold">Topics</h2>
+                <Button size="sm" onClick={() => openAddTopicDialog()}>
+                  <Plus className="h-4 w-4 mr-1.5" />
                   Add Topic
                 </Button>
               </div>
 
               {roadmap.topics.length === 0 && (
-                <Card>
-                  <CardContent className="py-12">
-                    <div className="flex flex-col items-center gap-3 text-center">
-                      <p className="font-medium">No topics yet</p>
-                      <p className="text-sm text-muted-foreground">Add topics to build your learning roadmap.</p>
-                      <Button variant="outline" onClick={openAddTopicDialog}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add First Topic
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="flex flex-col items-center gap-4 py-16 text-center border-2 border-dashed border-border/60 rounded-lg">
+                  <div className="rounded-full bg-muted p-4">
+                    <BookOpen className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="font-medium">No topics yet</p>
+                    <p className="text-sm text-muted-foreground mt-1">Add topics to build your learning roadmap.</p>
+                  </div>
+                  <Button variant="outline" onClick={() => openAddTopicDialog()}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add First Topic
+                  </Button>
+                </div>
               )}
 
               {roadmap.topics.length > 0 && (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {[...roadmap.topics].sort((a, b) => a.orderIndex - b.orderIndex).map((topic) => renderTopicCard(topic, 0))}
                 </div>
               )}
@@ -655,28 +922,17 @@ export default function RoadmapDetailPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="roadmap-title">Title</Label>
-                <Input
-                  id="roadmap-title"
-                  value={roadmapTitle}
-                  onChange={(e) => setRoadmapTitle(e.target.value)}
-                />
+                <Input id="roadmap-title" value={roadmapTitle} onChange={(e) => setRoadmapTitle(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="roadmap-description">Description</Label>
-                <Textarea
-                  id="roadmap-description"
-                  value={roadmapDescription}
-                  onChange={(e) => setRoadmapDescription(e.target.value)}
-                />
+                <Textarea id="roadmap-description" value={roadmapDescription} onChange={(e) => setRoadmapDescription(e.target.value)} />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditRoadmapOpen(false)}>Cancel</Button>
               <Button
-                onClick={() => updateRoadmapMutation.mutate({
-                  title: roadmapTitle.trim(),
-                  description: roadmapDescription.trim() || null,
-                })}
+                onClick={() => updateRoadmapMutation.mutate({ title: roadmapTitle.trim(), description: roadmapDescription.trim() || null })}
                 disabled={!roadmapTitle.trim() || updateRoadmapMutation.isPending}
               >
                 {updateRoadmapMutation.isPending ? "Saving..." : "Save Changes"}
@@ -713,56 +969,20 @@ export default function RoadmapDetailPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="topic-title">Title</Label>
-                <Input
-                  id="topic-title"
-                  placeholder="e.g., React Fundamentals"
-                  value={topicTitle}
-                  onChange={(e) => setTopicTitle(e.target.value)}
-                />
+                <Input id="topic-title" placeholder="e.g., React Fundamentals" value={topicTitle} onChange={(e) => setTopicTitle(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="topic-description">Description</Label>
-                <Textarea
-                  id="topic-description"
-                  placeholder="What does this topic cover?"
-                  value={topicDescription}
-                  onChange={(e) => setTopicDescription(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="topic-order">Order Index</Label>
-                <Input
-                  id="topic-order"
-                  type="number"
-                  min={0}
-                  value={topicOrderIndex}
-                  onChange={(e) => setTopicOrderIndex(Number(e.target.value))}
-                />
+                <Textarea id="topic-description" placeholder="What does this topic cover?" value={topicDescription} onChange={(e) => setTopicDescription(e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="topic-estimated-hours">Estimated Hours</Label>
-                  <Input
-                    id="topic-estimated-hours"
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    placeholder="e.g., 4"
-                    value={topicEstimatedHours}
-                    onChange={(e) => setTopicEstimatedHours(e.target.value)}
-                  />
+                  <Input id="topic-estimated-hours" type="number" min={0} step={0.5} placeholder="e.g., 4" value={topicEstimatedHours} onChange={(e) => setTopicEstimatedHours(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="topic-actual-hours">Actual Hours</Label>
-                  <Input
-                    id="topic-actual-hours"
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    placeholder="e.g., 3"
-                    value={topicActualHours}
-                    onChange={(e) => setTopicActualHours(e.target.value)}
-                  />
+                  <Input id="topic-actual-hours" type="number" min={0} step={0.5} placeholder="e.g., 3" value={topicActualHours} onChange={(e) => setTopicActualHours(e.target.value)} />
                 </div>
               </div>
               <div className="space-y-2">
@@ -791,27 +1011,30 @@ export default function RoadmapDetailPage() {
                   </ul>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="topic-parent">Parent Topic (optional, for subtopics)</Label>
-                <Select value={topicParentId} onValueChange={setTopicParentId}>
-                  <SelectTrigger id="topic-parent">
-                    <SelectValue placeholder="None (top-level topic)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None (top-level topic)</SelectItem>
-                    {getTopLevelTopics().map((t) => (
-                      <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="topic-parent">Parent Topic</Label>
+                  <Select value={topicParentId} onValueChange={setTopicParentId}>
+                    <SelectTrigger id="topic-parent">
+                      <SelectValue placeholder="None (top-level)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (top-level)</SelectItem>
+                      {getTopLevelTopics().map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="topic-order">Order</Label>
+                  <Input id="topic-order" type="number" min={0} value={topicOrderIndex} onChange={(e) => setTopicOrderIndex(Number(e.target.value))} />
+                </div>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={resetTopicDialog}>Cancel</Button>
-              <Button
-                onClick={handleSaveTopic}
-                disabled={createTopicMutation.isPending || updateTopicMutation.isPending}
-              >
+              <Button onClick={handleSaveTopic} disabled={createTopicMutation.isPending || updateTopicMutation.isPending}>
                 {createTopicMutation.isPending || updateTopicMutation.isPending
                   ? "Saving..."
                   : editingTopic ? "Update Topic" : "Add Topic"}
@@ -838,10 +1061,8 @@ export default function RoadmapDetailPage() {
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button variant="outline" onClick={() => { setDeleteTopicDialogOpen(false); setTopicToDelete(null); }}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleConfirmDeleteTopic} disabled={deleteTopicMutation.isPending}>
+              <Button variant="outline" onClick={() => { setDeleteTopicDialogOpen(false); setTopicToDelete(null); }}>Cancel</Button>
+              <Button variant="destructive" onClick={() => topicToDelete && deleteTopicMutation.mutate(topicToDelete.id)} disabled={deleteTopicMutation.isPending}>
                 {deleteTopicMutation.isPending ? "Deleting..." : "Delete"}
               </Button>
             </DialogFooter>
@@ -871,12 +1092,10 @@ export default function RoadmapDetailPage() {
                   })
                   .then(() => {
                     setAiResultOpen(false);
-                    toast.success("Saved to Notes! Opening notes...");
+                    toast.success("Saved to Notes!");
                     setTimeout(() => router.push("/notes"), 500);
                   })
-                  .catch(() => {
-                    toast.error("Failed to save to Notes");
-                  });
+                  .catch(() => toast.error("Failed to save to Notes"));
               },
             },
           ]}

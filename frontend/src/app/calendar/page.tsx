@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import api from "@/lib/api";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
@@ -347,6 +348,42 @@ export default function CalendarPage() {
 
   const isMutating = createMutation.isPending || updateMutation.isPending;
 
+  // ── AI floating button actions ──────────────────────────────────────────────
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
+
+  useEffect(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Plan My Week",
+        action: "plan_week",
+        icon: Calendar,
+        onAction: () => {
+          const upcoming = eventsRef.current.slice(0, 15)
+            .map((e) => `- ${e.title} (${new Date(e.startTime).toLocaleDateString()} ${new Date(e.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`)
+            .join("\n");
+          openChat(
+            `Help me plan my week. Here are my upcoming events:\n\n${upcoming || "No events scheduled."}\n\nSuggest time blocks for focused work, meetings, and breaks. Identify any gaps I could use productively.`
+          );
+        },
+      },
+      {
+        label: "Suggest Schedule",
+        action: "suggest_schedule",
+        icon: Clock,
+        onAction: () => {
+          openChat(
+            "I need help organizing my schedule. Based on productivity best practices, suggest an ideal daily schedule template with time blocks for deep work, meetings, exercise, and breaks. I can then create events based on your suggestion."
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+    return () => clearPageActions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---- Render ----
 
   return (
@@ -380,7 +417,7 @@ export default function CalendarPage() {
                 </>
               )}
             </Button>
-            <Button onClick={() => openCreateDialog()}>
+            <Button size="sm" onClick={() => openCreateDialog()}>
               <Plus className="h-4 w-4 mr-2" />
               New Event
             </Button>

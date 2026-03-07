@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { toast } from "sonner";
@@ -215,25 +215,12 @@ export default function PomodoroPage() {
   // ── AI floating button actions ──────────────────────────────────────────────
   const { setPageActions, clearPageActions, openChat } = useAiChat();
 
-  const aiActionsContext = useMemo(() => {
-    const todoTasks = tasks.filter(
-      (t) => t.status === "TODO" || t.status === "IN_PROGRESS"
-    );
-    const taskSummary = todoTasks
-      .slice(0, 10)
-      .map((t) => `- [${t.priority}] ${t.title}`)
-      .join("\n");
-
-    const recentSessionsSummary = sessions
-      .slice(0, 5)
-      .map(
-        (s) =>
-          `- ${s.durationMinutes}min ${s.status.toLowerCase()}${s.taskTitle ? ` (${s.taskTitle})` : ""}${s.notes ? `: ${s.notes}` : ""}`
-      )
-      .join("\n");
-
-    return { taskSummary, recentSessionsSummary };
-  }, [tasks, sessions]);
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const statsRef = useRef(stats);
+  statsRef.current = stats;
 
   useEffect(() => {
     const actions: PageAiAction[] = [
@@ -242,8 +229,15 @@ export default function PomodoroPage() {
         action: "plan_focus_session",
         icon: CalendarClock,
         onAction: () => {
+          const todoTasks = tasksRef.current.filter(
+            (t) => t.status === "TODO" || t.status === "IN_PROGRESS"
+          );
+          const taskSummary = todoTasks
+            .slice(0, 10)
+            .map((t) => `- [${t.priority}] ${t.title}`)
+            .join("\n");
           openChat(
-            `Help me plan my next focus session. Here are my current tasks:\n\n${aiActionsContext.taskSummary || "No tasks found."}\n\nBased on priorities and deadlines, what should I focus on next? Suggest a task and an appropriate focus duration.`
+            `Help me plan my next focus session. Here are my current tasks:\n\n${taskSummary || "No tasks found."}\n\nBased on priorities and deadlines, what should I focus on next? Suggest a task and an appropriate focus duration.`
           );
         },
       },
@@ -252,15 +246,24 @@ export default function PomodoroPage() {
         action: "session_summary",
         icon: FileText,
         onAction: () => {
+          const recentSessionsSummary = sessionsRef.current
+            .slice(0, 5)
+            .map(
+              (s) =>
+                `- ${s.durationMinutes}min ${s.status.toLowerCase()}${s.taskTitle ? ` (${s.taskTitle})` : ""}${s.notes ? `: ${s.notes}` : ""}`
+            )
+            .join("\n");
+          const s = statsRef.current;
           openChat(
-            `Summarize my recent focus sessions:\n\n${aiActionsContext.recentSessionsSummary || "No recent sessions."}\n\nTotal sessions: ${stats?.totalSessions ?? 0}\nTotal focus minutes: ${stats?.totalMinutes ?? 0}\nSessions this week: ${stats?.sessionsThisWeek ?? 0}\n\nPlease provide insights on my productivity patterns and suggestions for improvement.`
+            `Summarize my recent focus sessions:\n\n${recentSessionsSummary || "No recent sessions."}\n\nTotal sessions: ${s?.totalSessions ?? 0}\nTotal focus minutes: ${s?.totalMinutes ?? 0}\nSessions this week: ${s?.sessionsThisWeek ?? 0}\n\nPlease provide insights on my productivity patterns and suggestions for improvement.`
           );
         },
       },
     ];
     setPageActions(actions);
     return () => clearPageActions();
-  }, [setPageActions, clearPageActions, openChat, aiActionsContext, stats]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // SVG ring constants
   const radius = 120;

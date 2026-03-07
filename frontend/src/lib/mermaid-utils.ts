@@ -8,13 +8,17 @@ const SPECIAL_CHARS = /[()[\]{}<>&#;]/;
 
 /**
  * Sanitize Mermaid chart text to fix common AI-generated syntax issues.
- * - Expands one-liners with semicolons.
- * - Ensures graph/flowchart declarations are on their own lines.
- * - Quotes labels containing special characters.
- * - Handles bracket-depth matching for nested parentheses.
+ * Returns an array of progressively more aggressive sanitization attempts.
  */
 export function sanitizeMermaid(code: string): string {
-  if (!code) return "";
+  return sanitizeMermaidAttempts(code)[0];
+}
+
+/**
+ * Returns multiple sanitized versions to try, from mild to aggressive.
+ */
+export function sanitizeMermaidAttempts(code: string): string[] {
+  if (!code) return [""];
 
   let result = code;
 
@@ -23,19 +27,46 @@ export function sanitizeMermaid(code: string): string {
     result = result.replace(/;\s*/g, "\n");
   }
 
-  // 2. Ensure graph type declaration is on its own line (LLMs often put content right after TD/LR)
+  // 2. Only apply advanced sanitization to graph/flowchart diagrams.
+  const firstLine = result.trim().split("\n")[0].trim();
+  const isFlowchart = /^(graph|flowchart)\s+(TD|TB|BT|RL|LR)/i.test(firstLine);
+
+  if (!isFlowchart) {
+    return [result.replace(/;\s*$/gm, "")];
+  }
+
+  // 3. Ensure graph type declaration is on its own line
   result = result.replace(/^((?:graph|flowchart)\s+(?:TD|TB|BT|RL|LR))\s+/, "$1\n");
 
-  // 3. Line-by-line advanced sanitization
-  return result
+  // 4. Fix multi-line subgraph labels
+  result = result.replace(
+    /^(\s*subgraph\s+\S+\s+\["[^\]]*)\n([^\]]*"\])/gm,
+    "$1 $2"
+  );
+
+  // 5. Line-by-line sanitization
+  const mild = sanitizeLines(result, false);
+  // 6. Aggressive: also strip direction directives & clean subgraph labels
+  const aggressive = sanitizeLines(result, true);
+
+  const attempts = [mild];
+  if (aggressive !== mild) attempts.push(aggressive);
+  return attempts;
+}
+
+function sanitizeLines(code: string, aggressive: boolean): string {
+  return code
     .split("\n")
     .map((line) => {
       const trimmed = line.trim();
-      
-      // Skip directive / style / structural / empty lines
+
+      // Skip empty / comment lines
+      if (!trimmed || trimmed.startsWith("%%")) {
+        return line;
+      }
+
+      // Skip diagram type declarations
       if (
-        !trimmed ||
-        trimmed.startsWith("%%") ||
         trimmed.startsWith("graph ") ||
         trimmed.startsWith("flowchart ") ||
         trimmed.startsWith("sequenceDiagram") ||
@@ -44,21 +75,89 @@ export function sanitizeMermaid(code: string): string {
         trimmed.startsWith("erDiagram") ||
         trimmed.startsWith("gantt") ||
         trimmed.startsWith("pie") ||
-        trimmed.startsWith("gitgraph") ||
+        trimmed.startsWith("gitgraph")
+      ) {
+        return line.replace(/;\s*$/, "");
+      }
+
+      // Style / class directives — pass through
+      if (
         trimmed.startsWith("classDef ") ||
         trimmed.startsWith("class ") ||
         trimmed.startsWith("style ") ||
         trimmed.startsWith("linkStyle ") ||
-        trimmed.startsWith("subgraph ") ||
-        trimmed.startsWith("subgraph\t") ||
-        trimmed === "end" ||
-        trimmed.startsWith("direction ")
+        trimmed === "end"
       ) {
-        // Remove trailing semicolons on style lines
         return line.replace(/;\s*$/, "");
       }
 
-      // Remove trailing semicolons from standard lines
+      // Direction directives — remove in aggressive mode (causes issues in nested subgraphs)
+      if (trimmed.startsWith("direction ")) {
+        return aggressive ? "" : line.replace(/;\s*$/, "");
+      }
+
+      // Normalize subgraph declarations.
+      // Per Mermaid docs, correct syntax is: subgraph id[title] — NO space between id and bracket.
+      if (/^subgraph\s+/.test(trimmed)) {
+        const afterKeyword = trimmed.replace(/^subgraph\s+/, "").trim();
+        const indent = line.match(/^(\s*)/)?.[1] || "";
+
+        // Has ID + bracketed label (with or without space): subgraph ID ["Label"] or subgraph ID["Label"]
+        // Fix: remove space between ID and bracket, clean label if aggressive
+        const idBracketMatch = afterKeyword.match(/^(\S+)\s*\["?([^\]"]*)"?\]$/);
+        if (idBracketMatch) {
+          const id = idBracketMatch[1];
+          let label = idBracketMatch[2];
+          if (aggressive) label = label.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+          return `${indent}subgraph ${id}["${label}"]`;
+        }
+
+        // Quoted name: subgraph "Title" → subgraph id["Title"]
+        const quotedMatch = afterKeyword.match(/^"(.+)"$/);
+        if (quotedMatch) {
+          let label = quotedMatch[1];
+          if (aggressive) label = label.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+          const id = "SG_" + label.replace(/[^a-zA-Z0-9]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 30);
+          return `${indent}subgraph ${id}["${label}"]`;
+        }
+
+        // Bare multi-word name: subgraph Foo Bar → subgraph id["Foo Bar"]
+        if (afterKeyword.includes(" ")) {
+          let label = afterKeyword;
+          if (aggressive) label = label.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
+          const id = "SG_" + label.replace(/[^a-zA-Z0-9]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 30);
+          return `${indent}subgraph ${id}["${label}"]`;
+        }
+        return line.replace(/;\s*$/, "");
+      }
+
+      // Normalize labeled edge syntax: A -- text --> B  →  A -->|text| B
+      const labeledSolidEdge = trimmed.match(/^(\S+(?:\s*\[[^\]]*\])?)\s+--\s+(.+?)\s+-->\s+(\S+(?:\s*\[[^\]]*\])?)$/);
+      if (labeledSolidEdge) {
+        const indent = line.match(/^(\s*)/)?.[1] || "";
+        return `${indent}${labeledSolidEdge[1]} -->|${labeledSolidEdge[2]}| ${labeledSolidEdge[3]}`;
+      }
+
+      // Normalize labeled dotted edge: A -. text .-> B  →  A -.->|text| B
+      const labeledDottedEdge = trimmed.match(/^(\S+(?:\s*\[[^\]]*\])?)\s+-\.\s+(.+?)\s+\.->\s+(\S+(?:\s*\[[^\]]*\])?)$/);
+      if (labeledDottedEdge) {
+        const indent = line.match(/^(\s*)/)?.[1] || "";
+        return `${indent}${labeledDottedEdge[1]} -.->|${labeledDottedEdge[2]}| ${labeledDottedEdge[3]}`;
+      }
+
+      // Fix class-diagram operators used in flowcharts
+      const classInheritEdge = trimmed.match(/^(\S+(?:\s*\[[^\]]*\])?)\s+<\|--\s+(\S+(?:\s*\[[^\]]*\])?)$/);
+      if (classInheritEdge) {
+        const indent = line.match(/^(\s*)/)?.[1] || "";
+        return `${indent}${classInheritEdge[1]} --> ${classInheritEdge[2]}`;
+      }
+      const classImplEdge = trimmed.match(/^(\S+(?:\s*\[[^\]]*\])?)\s+<\|\.\.\s+(\S+(?:\s*\[[^\]]*\])?)$/);
+      if (classImplEdge) {
+        const indent = line.match(/^(\s*)/)?.[1] || "";
+        return `${indent}${classImplEdge[1]} -.-> ${classImplEdge[2]}`;
+      }
+
+      // Remove trailing semicolons
       let l = line.replace(/;\s*$/, "");
 
       // Walk through the line and quote labels that contain special chars
@@ -66,14 +165,11 @@ export function sanitizeMermaid(code: string): string {
       let i = 0;
       while (i < l.length) {
         const ch = l[i];
-        
-        // Detect node label start: a word char immediately before [ ( or {
-        // e.g. A[Label]
+
         if ((ch === "[" || ch === "(" || ch === "{") && i > 0 && /\w/.test(l[i - 1])) {
           const open = ch;
           const close = CLOSE_BRACKET[open];
-          
-          // Find matching close bracket with depth tracking
+
           let depth = 1;
           let j = i + 1;
           while (j < l.length && depth > 0) {
@@ -81,18 +177,14 @@ export function sanitizeMermaid(code: string): string {
             else if (l[j] === close) depth--;
             j++;
           }
-          
+
           const content = l.slice(i + 1, j - 1);
-          
-          // Already quoted — keep as is
+
           if (content.startsWith('"') && content.endsWith('"')) {
             finalLine += open + content + close;
-          } 
-          // Contains special chars — wrap in quotes
-          else if (SPECIAL_CHARS.test(content)) {
+          } else if (SPECIAL_CHARS.test(content)) {
             finalLine += open + '"' + content.replace(/"/g, "'") + '"' + close;
-          } 
-          else {
+          } else {
             finalLine += open + content + close;
           }
           i = j;

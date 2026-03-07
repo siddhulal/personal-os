@@ -20,6 +20,8 @@ interface AiChatContextType {
   pageActions: PageAiAction[];
   setPageActions: (actions: PageAiAction[]) => void;
   clearPageActions: () => void;
+  canvasSaveHandler: ((content: string) => void) | null;
+  registerCanvasSaveHandler: (handler: ((content: string) => void) | null) => void;
 }
 
 const AiChatContext = createContext<AiChatContextType | undefined>(undefined);
@@ -29,6 +31,7 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [currentContext, setCurrentContext] = useState<string | null>(null);
   const [pageActions, setPageActionsState] = useState<PageAiAction[]>([]);
+  const [canvasSaveHandler, setCanvasSaveHandler] = useState<((content: string) => void) | null>(null);
 
   const toggleChat = useCallback(() => {
     setIsOpen((prev) => !prev);
@@ -55,10 +58,15 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
     setPageActionsState([]);
   }, []);
 
+  const registerCanvasSaveHandler = useCallback((handler: ((content: string) => void) | null) => {
+    setCanvasSaveHandler(() => handler);
+  }, []);
+
   return (
     <AiChatContext.Provider value={{
       isOpen, isExpanded, toggleChat, openChat, closeChat, toggleExpanded, currentContext,
       pageActions, setPageActions, clearPageActions,
+      canvasSaveHandler, registerCanvasSaveHandler,
     }}>
       {children}
     </AiChatContext.Provider>

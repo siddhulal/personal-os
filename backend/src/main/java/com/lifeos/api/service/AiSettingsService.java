@@ -59,7 +59,7 @@ public class AiSettingsService {
                     AiSettings newSettings = AiSettings.builder()
                             .user(user)
                             .activeProvider(AiSettings.Provider.OLLAMA)
-                            .ollamaBaseUrl("http://localhost:11434")
+                            .ollamaBaseUrl("http://host.docker.internal:11434")
                             .ollamaModel("qwen3:14b")
                             .openaiModel("gpt-4o")
                             .geminiModel("gemini-1.5-flash")

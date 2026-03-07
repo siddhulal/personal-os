@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { AppShell } from "@/components/layout/app-shell";
 import { QuickAdd } from "@/components/shared/quick-add";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +22,8 @@ import {
   Sparkles,
   Layers,
   FileText,
+  Sun,
+  Focus,
 } from "lucide-react";
 import Link from "next/link";
 import { DashboardData } from "@/types";
@@ -34,6 +38,52 @@ export default function DashboardPage() {
       return res.data;
     },
   });
+
+  const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const dashRef = useRef(dashboard);
+  dashRef.current = dashboard;
+
+  useEffect(() => {
+    const actions: PageAiAction[] = [
+      {
+        label: "Morning Briefing",
+        action: "morning_briefing",
+        icon: Sun,
+        onAction: () => {
+          const d = dashRef.current;
+          const todayCount = d?.todayTasks?.length ?? 0;
+          const overdueCount = d?.overdueTasks?.length ?? 0;
+          const habitsCompleted = d?.habitProgress?.completedToday ?? 0;
+          const habitsTotal = d?.habitProgress?.totalHabits ?? 0;
+          const taskList = (d?.todayTasks ?? []).slice(0, 8)
+            .map((t) => `- [${t.priority}] ${t.title}`).join("\n");
+          const overdueList = (d?.overdueTasks ?? []).slice(0, 5)
+            .map((t) => `- ${t.title} (due ${t.dueDate?.split("T")[0] ?? "?"})`).join("\n");
+          openChat(
+            `Give me a morning briefing for today.\n\nToday's tasks (${todayCount}):\n${taskList || "None"}\n\nOverdue tasks (${overdueCount}):\n${overdueList || "None"}\n\nHabits: ${habitsCompleted}/${habitsTotal} completed today\n\nPlease summarize my day, highlight priorities, and suggest a plan of action.`
+          );
+        },
+      },
+      {
+        label: "What Should I Focus On?",
+        action: "focus_suggestion",
+        icon: Focus,
+        onAction: () => {
+          const d = dashRef.current;
+          const tasks = [...(d?.overdueTasks ?? []), ...(d?.todayTasks ?? [])].slice(0, 10)
+            .map((t) => `- [${t.priority}/${t.status}] ${t.title}`).join("\n");
+          const projects = (d?.activeProjects ?? []).slice(0, 5)
+            .map((p) => `- ${p.name} (${p.status})`).join("\n");
+          openChat(
+            `Based on my current workload, what should I focus on right now?\n\nOpen tasks:\n${tasks || "None"}\n\nActive projects:\n${projects || "None"}\n\nPlease suggest the single most impactful thing I should work on and explain why.`
+          );
+        },
+      },
+    ];
+    setPageActions(actions);
+    return () => clearPageActions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AppShell>

@@ -657,7 +657,440 @@ function CanvasEngine({ canvasId }: { canvasId: string }) {
   }, [locked, setNodes]);
 
   // ── AI floating button actions ──────────────────────────────────────────────
-  const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const { setPageActions, clearPageActions, openChat, registerCanvasSaveHandler } = useAiChat();
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  // ── Parse AI markdown into canvas nodes & edges ───────────────────────────
+
+  // Try to extract a Mermaid graph block and parse it into nodes + edges
+  const parseMermaidGraph = (content: string) => {
+    // Extract mermaid code block
+    const mermaidMatch = content.match(/```mermaid\s*\n([\s\S]*?)```/);
+    if (!mermaidMatch) return null;
+
+    const mermaidCode = mermaidMatch[1];
+    // Only handle graph/flowchart diagrams
+    if (!/^\s*(graph|flowchart)\s+(TD|TB|LR|RL|BT)/m.test(mermaidCode)) return null;
+
+    const nodeLabels = new Map<string, string>(); // id -> display label
+    const edgeList: { source: string; target: string; style: "solid" | "dotted" }[] = [];
+
+    // Set of keywords/directives to skip
+    const SKIP_WORDS = new Set([
+      "graph", "flowchart", "subgraph", "end", "direction",
+      "classDef", "class", "style", "linkStyle", "click",
+      "TD", "TB", "LR", "RL", "BT",
+    ]);
+
+    const lines = mermaidCode.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Skip empty lines and comments
+      if (!trimmed || trimmed.startsWith("%%")) continue;
+
+      // Skip full directive lines
+      const firstWord = trimmed.split(/[\s([{]/)[0];
+      if (SKIP_WORDS.has(firstWord)) continue;
+
+      // Parse edges - many Mermaid edge formats:
+      //   A --> B, A -.-> B, A -- text --> B, A -.->|text| B,
+      //   A -->|text| B, A ==> B, A -- text --- B
+      //   A <|-- B (class-diagram inheritance), A <|.. B (class-diagram implements)
+      // Source/target may have node declarations: A["Label"] --> B["Label"]
+
+      // First check for class-diagram operators: A <|-- B or A <|.. B
+      const classEdgePattern = /^(\w+)(?:\s*\[["']?([^\]"']*?)["']?\])?\s+(<\|--|<\|\.\.)\s+(\w+)(?:\s*\[["']?([^\]"']*?)["']?\])?/;
+      const classEdgeMatch = trimmed.match(classEdgePattern);
+      if (classEdgeMatch) {
+        const [, srcId, srcLabel, arrow, tgtId, tgtLabel] = classEdgeMatch;
+        if (srcLabel) nodeLabels.set(srcId, srcLabel.trim());
+        else if (!nodeLabels.has(srcId)) nodeLabels.set(srcId, srcId);
+        if (tgtLabel) nodeLabels.set(tgtId, tgtLabel.trim());
+        else if (!nodeLabels.has(tgtId)) nodeLabels.set(tgtId, tgtId);
+
+        edgeList.push({
+          source: srcId,
+          target: tgtId,
+          style: arrow === "<|.." ? "dotted" : "solid",
+        });
+        continue;
+      }
+
+      // Standard flowchart edge patterns
+      const edgePattern = /^(\w+)(?:\s*\[["']?([^\]"']*?)["']?\])?\s+(?:--[^->]*-->|--+>|-.->|==+>|--[^->]*---|-->|-.->)\s*(?:\|[^|]*\|)?\s*(\w+)(?:\s*\[["']?([^\]"']*?)["']?\])?/;
+      const edgeMatch = trimmed.match(edgePattern);
+      if (edgeMatch) {
+        const [, srcId, srcLabel, tgtId, tgtLabel] = edgeMatch;
+        if (srcLabel) nodeLabels.set(srcId, srcLabel.trim());
+        else if (!nodeLabels.has(srcId)) nodeLabels.set(srcId, srcId);
+        if (tgtLabel) nodeLabels.set(tgtId, tgtLabel.trim());
+        else if (!nodeLabels.has(tgtId)) nodeLabels.set(tgtId, tgtId);
+
+        // Determine edge style: dotted if the line contains -.->
+        const isDotted = /-.->/.test(trimmed);
+        edgeList.push({
+          source: srcId,
+          target: tgtId,
+          style: isDotted ? "dotted" : "solid",
+        });
+        continue;
+      }
+
+      // Parse standalone node declarations: A[Label] or A(Label) or A{Label} or A["Label"]
+      const nodePattern = /^(\w+)\s*[\[({]["']?([^\])}"']+?)["']?[\])}]\s*$/;
+      const nodeMatch = trimmed.match(nodePattern);
+      if (nodeMatch) {
+        nodeLabels.set(nodeMatch[1], nodeMatch[2].trim());
+        continue;
+      }
+
+      // Parse bare node identifiers (e.g., standalone "ArrayList" inside a subgraph)
+      // Must be a single word with no special characters, starting with uppercase
+      const bareNodeMatch = trimmed.match(/^([A-Z]\w*)$/);
+      if (bareNodeMatch && !SKIP_WORDS.has(bareNodeMatch[1])) {
+        if (!nodeLabels.has(bareNodeMatch[1])) {
+          nodeLabels.set(bareNodeMatch[1], bareNodeMatch[1]);
+        }
+      }
+    }
+
+    if (nodeLabels.size === 0) return null;
+
+    // Detect interface nodes from labels containing "(Interface)" or "<<Interface>>"
+    const interfaceIds = new Set<string>();
+    nodeLabels.forEach((label, id) => {
+      if (/\binterface\b/i.test(label) || /<<\s*Interface\s*>>/i.test(label)) {
+        interfaceIds.add(id);
+      }
+    });
+
+    // Clean up labels: remove "(Interface)", "(Class)", "<<Interface>>", "<<Class>>" notations
+    nodeLabels.forEach((label, id) => {
+      const cleaned = label
+        .replace(/\s*\((Interface|Class)\)\s*/gi, "")
+        .replace(/<<\s*(Interface|Class)\s*>>\s*/gi, "")
+        .trim();
+      if (cleaned) nodeLabels.set(id, cleaned);
+    });
+
+    return { nodeLabels, edgeList, interfaceIds };
+  };
+
+  // Layout nodes in a tree/hierarchy using BFS from roots
+  const layoutNodes = (
+    nodeLabels: Map<string, string>,
+    edgeList: { source: string; target: string; style: "solid" | "dotted" }[],
+    startX: number,
+    startY: number
+  ) => {
+    const GAP_X = 300;
+    const GAP_Y = 180;
+
+    // Build adjacency for children
+    const children = new Map<string, string[]>();
+    const hasParent = new Set<string>();
+    for (const e of edgeList) {
+      if (!children.has(e.source)) children.set(e.source, []);
+      children.get(e.source)!.push(e.target);
+      hasParent.add(e.target);
+    }
+
+    // Find root nodes (no incoming edges)
+    const allIds = Array.from(nodeLabels.keys());
+    const roots = allIds.filter((id) => !hasParent.has(id));
+    if (roots.length === 0 && allIds.length > 0) roots.push(allIds[0]);
+
+    // BFS to assign levels
+    const levels = new Map<string, number>();
+    const queue = roots.map((r) => ({ id: r, level: 0 }));
+    const visited = new Set<string>();
+    for (const r of roots) {
+      levels.set(r, 0);
+      visited.add(r);
+    }
+
+    while (queue.length > 0) {
+      const { id, level } = queue.shift()!;
+      const kids = children.get(id) || [];
+      for (const kid of kids) {
+        if (!visited.has(kid)) {
+          visited.add(kid);
+          levels.set(kid, level + 1);
+          queue.push({ id: kid, level: level + 1 });
+        }
+      }
+    }
+
+    // Assign levels to any unvisited nodes
+    Array.from(nodeLabels.keys()).forEach((id) => {
+      if (!levels.has(id)) levels.set(id, 0);
+    });
+
+    // Group by level
+    const byLevel = new Map<number, string[]>();
+    levels.forEach((level, id) => {
+      if (!byLevel.has(level)) byLevel.set(level, []);
+      byLevel.get(level)!.push(id);
+    });
+
+    // Position: each level is a row, nodes spread horizontally
+    const positions = new Map<string, { x: number; y: number }>();
+    const maxLevel = Math.max(...Array.from(byLevel.keys()));
+    for (let level = 0; level <= maxLevel; level++) {
+      const nodesAtLevel = byLevel.get(level) || [];
+      const totalWidth = (nodesAtLevel.length - 1) * GAP_X;
+      const offsetX = startX - totalWidth / 2;
+      nodesAtLevel.forEach((id, idx) => {
+        positions.set(id, {
+          x: Math.round(offsetX + idx * GAP_X),
+          y: Math.round(startY + level * GAP_Y),
+        });
+      });
+    }
+
+    return positions;
+  };
+
+  // Fallback: parse markdown headings/bullets into flat node list
+  const parseMarkdownItems = (content: string) => {
+    const items: { label: string; content: string }[] = [];
+    const lines = content.split("\n");
+    let currentHeading = "";
+    let currentLines: string[] = [];
+    let inCodeBlock = false;
+
+    const flushHeading = () => {
+      if (currentHeading) {
+        const bodyText = currentLines
+          .join("\n")
+          .replace(/```[\s\S]*?```/g, "") // strip code blocks from content
+          .trim();
+        items.push({ label: currentHeading, content: bodyText });
+        currentLines = [];
+      }
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Track code blocks so we skip them for heading detection
+      if (trimmed.startsWith("```")) {
+        inCodeBlock = !inCodeBlock;
+        if (currentHeading) currentLines.push(line);
+        continue;
+      }
+      if (inCodeBlock) {
+        if (currentHeading) currentLines.push(line);
+        continue;
+      }
+
+      // Match headings: # Title, ## Title, ### Title
+      const headingMatch = trimmed.match(/^#{1,4}\s+(.+)/);
+      if (headingMatch) {
+        flushHeading();
+        currentHeading = headingMatch[1].replace(/\*\*/g, "").trim();
+        continue;
+      }
+
+      // Match numbered section headers: "1. Title" or "2. Title" at top level
+      const numberedHeadingMatch = trimmed.match(/^\d+\.\s+\*\*(.+?)\*\*/);
+      if (numberedHeadingMatch && !currentHeading) {
+        flushHeading();
+        currentHeading = numberedHeadingMatch[1].trim();
+        continue;
+      }
+
+      // Match standalone bold lines as section titles: **Title**
+      const boldMatch = trimmed.match(/^\*\*(.+?)\*\*\s*$/);
+      if (boldMatch && !trimmed.startsWith("-") && !trimmed.startsWith("*")) {
+        flushHeading();
+        currentHeading = boldMatch[1].trim();
+        continue;
+      }
+
+      // Any other non-empty line: accumulate under current heading
+      if (trimmed && currentHeading) {
+        // Clean up markdown artifacts for readable content
+        currentLines.push(
+          trimmed
+            .replace(/^\*\*(.+?)\*\*:?\s*/, "$1: ") // **Bold**: -> Bold:
+            .replace(/\*\*/g, "")
+        );
+      }
+    }
+    flushHeading();
+    return items;
+  };
+
+  const handleSaveAsCanvas = useCallback(
+    async (content: string) => {
+      // Get viewport center for positioning
+      let centerX = 600;
+      let centerY = 100;
+      try {
+        const { x, y, zoom } = getViewport();
+        centerX = -x / zoom + window.innerWidth / 2 / zoom;
+        centerY = -y / zoom + 100;
+      } catch {
+        // fallback
+      }
+
+      // Try Mermaid graph parsing first
+      const mermaid = parseMermaidGraph(content);
+
+      if (mermaid && mermaid.nodeLabels.size > 0) {
+        // ── Mermaid mode: create nodes from diagram definition ──────────
+        const { nodeLabels, edgeList, interfaceIds } = mermaid;
+        const positions = layoutNodes(nodeLabels, edgeList, centerX, centerY);
+
+        // Use interface detection from parser + classDef fallback
+        const interfaceNodes = new Set<string>(interfaceIds);
+        const mermaidBlock = content.match(/```mermaid\s*\n([\s\S]*?)```/)?.[1] || "";
+        // Also detect from classDef/class directives
+        const classRegex = /^\s*class\s+([^\s]+)\s+(\w+)/gm;
+        let classMatchResult: RegExpExecArray | null;
+        while ((classMatchResult = classRegex.exec(mermaidBlock)) !== null) {
+          if (classMatchResult[2] === "interface") {
+            classMatchResult[1].split(",").forEach((n) => interfaceNodes.add(n.trim()));
+          }
+        }
+
+        toast.info(`Creating ${nodeLabels.size} nodes from diagram...`);
+
+        // Create nodes
+        const idToCreated = new Map<string, ApiCanvasNode>();
+        let colorIdx = 0;
+        const nodeEntries = Array.from(nodeLabels.entries());
+        for (const [nodeId, label] of nodeEntries) {
+          const pos = positions.get(nodeId) || { x: 0, y: 0 };
+          const isInterface = interfaceNodes.has(nodeId);
+          const color = isInterface ? "#3b82f6" : COLORS[colorIdx % COLORS.length];
+          colorIdx++;
+          try {
+            const created = await createCanvasNode({
+              canvasId,
+              label: label.slice(0, 100),
+              content: isInterface ? "Interface" : "Class",
+              x: pos.x,
+              y: pos.y,
+              width: NODE_WIDTH,
+              height: NODE_HEIGHT,
+              color,
+              nodeType: "note",
+            });
+            idToCreated.set(nodeId, created);
+          } catch {
+            toast.error(`Failed to create: ${label}`);
+          }
+        }
+
+        // Add to canvas
+        if (idToCreated.size > 0) {
+          setNodes((nds) => [
+            ...nds,
+            ...Array.from(idToCreated.values()).map((n) => apiNodeToFlowNode(n, onUpdateNode)),
+          ]);
+
+          // Create edges from the mermaid relationships
+          for (const edge of edgeList) {
+            const src = idToCreated.get(edge.source);
+            const tgt = idToCreated.get(edge.target);
+            if (!src || !tgt) continue;
+            try {
+              const created = await createCanvasEdge({
+                canvasId,
+                sourceNodeId: src.id,
+                targetNodeId: tgt.id,
+                sourceHandle: "bottom",
+                targetHandle: "top",
+                edgeType: edge.style === "dotted" ? "dotted" : "solid",
+              });
+              setEdges((eds) => [...eds, apiEdgeToFlowEdge(created)]);
+            } catch {
+              // edges are optional
+            }
+          }
+
+          toast.success(`Added ${idToCreated.size} nodes and ${edgeList.length} connections`);
+          setTimeout(() => fitView({ padding: 0.15, duration: 500 }), 300);
+        }
+      } else {
+        // ── Fallback: markdown heading/bullet parsing ───────────────────
+        let items = parseMarkdownItems(content);
+        if (items.length === 0) {
+          const firstLine = content.split("\n").find((l) => l.trim()) || "AI Response";
+          items = [{
+            label: firstLine.replace(/^#+\s*/, "").replace(/\*\*/g, "").slice(0, 60),
+            content: content.slice(0, 500),
+          }];
+        }
+
+        const COLS = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(items.length))));
+        const GAP_X = 320;
+        const GAP_Y = 200;
+
+        toast.info(`Creating ${items.length} canvas nodes...`);
+
+        const createdNodes: ApiCanvasNode[] = [];
+        for (let i = 0; i < items.length; i++) {
+          const col = i % COLS;
+          const row = Math.floor(i / COLS);
+          try {
+            const newNode = await createCanvasNode({
+              canvasId,
+              label: items[i].label.slice(0, 100),
+              content: items[i].content.slice(0, 1000),
+              x: Math.round(centerX - ((COLS - 1) * GAP_X) / 2 + col * GAP_X),
+              y: Math.round(centerY + row * GAP_Y),
+              width: NODE_WIDTH,
+              height: NODE_HEIGHT,
+              color: COLORS[i % COLORS.length],
+              nodeType: "note",
+            });
+            createdNodes.push(newNode);
+          } catch {
+            toast.error(`Failed to create node: ${items[i].label}`);
+          }
+        }
+
+        if (createdNodes.length > 0) {
+          setNodes((nds) => [
+            ...nds,
+            ...createdNodes.map((n) => apiNodeToFlowNode(n, onUpdateNode)),
+          ]);
+
+          for (let i = 0; i < createdNodes.length - 1; i++) {
+            try {
+              const newEdge = await createCanvasEdge({
+                canvasId,
+                sourceNodeId: createdNodes[i].id,
+                targetNodeId: createdNodes[i + 1].id,
+                sourceHandle: "bottom",
+                targetHandle: "top",
+                edgeType: "solid",
+              });
+              setEdges((eds) => [...eds, apiEdgeToFlowEdge(newEdge)]);
+            } catch {
+              // edges are optional
+            }
+          }
+
+          toast.success(`Added ${createdNodes.length} nodes to canvas`);
+          setTimeout(() => fitView({ padding: 0.2, duration: 500 }), 300);
+        }
+      }
+    },
+    [canvasId, getViewport, setNodes, setEdges, onUpdateNode, fitView]
+  );
+
+  // Register the canvas save handler so the AI sidebar can use it
+  useEffect(() => {
+    registerCanvasSaveHandler(handleSaveAsCanvas);
+    return () => registerCanvasSaveHandler(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleSaveAsCanvas]);
 
   useEffect(() => {
     const actions: PageAiAction[] = [
@@ -667,7 +1100,7 @@ function CanvasEngine({ canvasId }: { canvasId: string }) {
         icon: Network,
         onAction: () => {
           openChat(
-            "I want to generate a mind map / concept map as canvas nodes. Tell me a topic and I will suggest a set of connected nodes with labels and descriptions that you can add to your canvas."
+            "Generate a visual diagram for the topic I'll describe. ALWAYS include a Mermaid diagram using ```mermaid with graph TD syntax showing the hierarchy/relationships. Use --> for inheritance/extends and -.-> for implements. Each node should be a separate entity (class, interface, concept, etc). Keep explanations minimal - the diagram is the main output. I can save your Mermaid diagram directly as interactive canvas nodes. What topic would you like diagrammed?"
           );
         },
       },
@@ -676,9 +1109,9 @@ function CanvasEngine({ canvasId }: { canvasId: string }) {
         action: "expand_selected_node",
         icon: Sparkles,
         onAction: () => {
-          const selectedNode = nodes.find((n) => n.selected);
+          const selectedNode = nodesRef.current.find((n) => n.selected);
           const context = selectedNode
-            ? `Expand on this canvas node and suggest related child nodes:\n\nNode: ${selectedNode.data.label || "Untitled"}\nContent: ${selectedNode.data.content || "N/A"}\n\nPlease suggest 3-5 related sub-topics or ideas that could become child nodes.`
+            ? `Expand on this canvas node. Generate a Mermaid diagram (graph TD) showing 3-5 related sub-topics branching from "${selectedNode.data.label || "Untitled"}". Use --> for relationships. Each sub-topic should be its own node.\n\nCurrent node: ${selectedNode.data.label || "Untitled"}\nContent: ${selectedNode.data.content || "N/A"}`
             : "Select a node on the canvas first, then use this action to expand it with related child nodes. Or describe a topic to expand.";
           openChat(context);
         },
@@ -686,7 +1119,8 @@ function CanvasEngine({ canvasId }: { canvasId: string }) {
     ];
     setPageActions(actions);
     return () => clearPageActions();
-  }, [setPageActions, clearPageActions, openChat, nodes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 

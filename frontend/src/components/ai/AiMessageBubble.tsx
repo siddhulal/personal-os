@@ -4,7 +4,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
-import { User, Bot, Copy, Check, BookmarkPlus } from "lucide-react";
+import { User, Bot, Copy, Check, BookmarkPlus, FolderKanban, Network } from "lucide-react";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { Button } from "@/components/ui/button";
 
@@ -13,9 +13,11 @@ interface AiMessageBubbleProps {
   content: string;
   isStreaming?: boolean;
   onSaveAsQuestion?: (content: string) => void;
+  onSaveAsProject?: (content: string) => void;
+  onSaveAsCanvas?: (content: string) => void;
 }
 
-export function AiMessageBubble({ role, content, isStreaming, onSaveAsQuestion }: AiMessageBubbleProps) {
+export function AiMessageBubble({ role, content, isStreaming, onSaveAsQuestion, onSaveAsProject, onSaveAsCanvas }: AiMessageBubbleProps) {
   const isUser = role === "USER";
   const [copied, setCopied] = useState(false);
 
@@ -49,7 +51,7 @@ export function AiMessageBubble({ role, content, isStreaming, onSaveAsQuestion }
           {isUser ? (
             <p className="whitespace-pre-wrap">{content}</p>
           ) : (
-            <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:bg-background/50 [&_pre]:p-2 [&_pre]:rounded [&_code]:text-xs [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
+            <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:bg-background/50 [&_pre]:p-2 [&_pre]:rounded [&_pre]:border-l-2 [&_pre]:border-l-green-500 [&_code]:text-xs [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0 [&_h1]:text-purple-500 [&_h1]:border-l-2 [&_h1]:border-l-purple-500 [&_h1]:pl-2 [&_h2]:text-blue-500 [&_h2]:border-l-2 [&_h2]:border-l-blue-500 [&_h2]:pl-2 [&_h3]:text-cyan-500 [&_h3]:border-l-2 [&_h3]:border-l-cyan-500 [&_h3]:pl-2 [&_strong]:text-purple-400 dark:[&_strong]:text-purple-300 [&_li_strong]:text-blue-400 dark:[&_li_strong]:text-blue-300 [&_blockquote]:border-l-purple-400 [&_blockquote]:bg-purple-500/5 [&_a]:text-blue-400 [&_th]:bg-muted/50 [&_th]:text-blue-400 dark:[&_th]:text-blue-300">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
@@ -60,7 +62,7 @@ export function AiMessageBubble({ role, content, isStreaming, onSaveAsQuestion }
                     }
                     const isInline = !className;
                     return isInline ? (
-                      <code className="bg-background/50 px-1 rounded text-xs" {...props}>
+                      <code className="bg-purple-500/10 text-purple-300 px-1 rounded text-xs" {...props}>
                         {children}
                       </code>
                     ) : (
@@ -90,6 +92,28 @@ export function AiMessageBubble({ role, content, isStreaming, onSaveAsQuestion }
             >
               {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
             </Button>
+            {onSaveAsProject && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => onSaveAsProject(content)}
+              >
+                <FolderKanban className="w-3 h-3 mr-1" />
+                Save as Project
+              </Button>
+            )}
+            {onSaveAsCanvas && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => onSaveAsCanvas(content)}
+              >
+                <Network className="w-3 h-3 mr-1" />
+                Save as Canvas
+              </Button>
+            )}
             {onSaveAsQuestion && (
               <Button
                 variant="ghost"

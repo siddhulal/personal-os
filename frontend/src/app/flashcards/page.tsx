@@ -172,7 +172,8 @@ export default function FlashcardsPage() {
     ];
     setPageActions(actions);
     return () => clearPageActions();
-  }, [setPageActions, clearPageActions, openChat]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function startReview(deck?: string) {
     setReviewDeck(deck);

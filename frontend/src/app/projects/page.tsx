@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import api from "@/lib/api";
@@ -56,6 +56,8 @@ import {
   ListChecks,
   PlusCircle,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Project, ProjectStatus, PageResponse } from "@/types";
@@ -282,15 +284,17 @@ export default function ProjectsPage() {
 
   // ── AI floating button actions ──────────────────────────────────────────────
   const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
 
-  const registerAiActions = useCallback(() => {
+  useEffect(() => {
     const actions: PageAiAction[] = [
       {
         label: "Summarize Project",
         action: "summarize_project",
         icon: FileText,
         onAction: () => {
-          const firstProject = projects[0];
+          const firstProject = projectsRef.current[0];
           const context = firstProject
             ? `Summarize this project:\n\nName: ${firstProject.name}\nDescription: ${firstProject.description || "N/A"}\nStatus: ${firstProject.status}\nTasks: ${firstProject.completedTaskCount}/${firstProject.taskCount} completed\nTarget: ${firstProject.targetDate || "N/A"}\n\nProvide a concise status summary and highlight any concerns.`
             : "I'd like to get a project summary. Please describe the project you want summarized.";
@@ -302,7 +306,7 @@ export default function ProjectsPage() {
         action: "generate_project_plan",
         icon: ListChecks,
         onAction: () => {
-          const firstProject = projects[0];
+          const firstProject = projectsRef.current[0];
           const context = firstProject
             ? `Generate a detailed project plan for:\n\nProject: ${firstProject.name}\nDescription: ${firstProject.description || "N/A"}\nStatus: ${firstProject.status}\nTarget Date: ${firstProject.targetDate || "N/A"}\n\nPlease suggest key milestones, tasks broken into phases, and a timeline.`
             : "I want to generate a project plan. Please describe the project and its goals.";
@@ -321,12 +325,9 @@ export default function ProjectsPage() {
       },
     ];
     setPageActions(actions);
-  }, [projects, setPageActions, openChat]);
-
-  useEffect(() => {
-    registerAiActions();
     return () => clearPageActions();
-  }, [registerAiActions, clearPageActions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AppShell>
@@ -517,7 +518,7 @@ export default function ProjectsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             {projects.map((project) => {
               const isExpanded = expandedProjectId === project.id;
               const taskProgress =
@@ -539,13 +540,9 @@ export default function ProjectsPage() {
                         <CardTitle className="text-base font-semibold truncate">
                           {project.name}
                         </CardTitle>
-                        {project.description && (
-                          <CardDescription
-                            className={`mt-1 text-sm ${
-                              isExpanded ? "" : "line-clamp-2"
-                            }`}
-                          >
-                            {project.description}
+                        {project.description && !isExpanded && (
+                          <CardDescription className="mt-1 text-sm line-clamp-2">
+                            {project.description.replace(/[#*_`>\-\[\]]/g, "").slice(0, 200)}
                           </CardDescription>
                         )}
                       </div>
@@ -641,50 +638,49 @@ export default function ProjectsPage() {
 
                   {/* Expanded detail */}
                   {isExpanded && (
-                    <CardFooter className="flex-col items-start gap-2 border-t border-border pt-4 text-xs text-muted-foreground">
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 w-full">
+                    <CardFooter className="flex-col items-start gap-4 border-t border-border pt-4">
+                      {/* Metadata */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 w-full text-xs text-muted-foreground">
                         <div>
-                          <span className="font-medium text-foreground">
-                            Status:
-                          </span>{" "}
+                          <span className="font-medium text-foreground">Status:</span>{" "}
                           {STATUS_CONFIG[project.status].label}
                         </div>
                         <div>
-                          <span className="font-medium text-foreground">
-                            Tasks:
-                          </span>{" "}
-                          {project.completedTaskCount}/{project.taskCount}{" "}
-                          completed
+                          <span className="font-medium text-foreground">Tasks:</span>{" "}
+                          {project.completedTaskCount}/{project.taskCount} completed
                         </div>
                         {project.startDate && (
                           <div>
-                            <span className="font-medium text-foreground">
-                              Started:
-                            </span>{" "}
+                            <span className="font-medium text-foreground">Started:</span>{" "}
                             {formatDate(project.startDate)}
                           </div>
                         )}
                         {project.targetDate && (
                           <div>
-                            <span className="font-medium text-foreground">
-                              Target:
-                            </span>{" "}
+                            <span className="font-medium text-foreground">Target:</span>{" "}
                             {formatDate(project.targetDate)}
                           </div>
                         )}
                         <div>
-                          <span className="font-medium text-foreground">
-                            Created:
-                          </span>{" "}
+                          <span className="font-medium text-foreground">Created:</span>{" "}
                           {formatDate(project.createdAt)}
                         </div>
                         <div>
-                          <span className="font-medium text-foreground">
-                            Updated:
-                          </span>{" "}
+                          <span className="font-medium text-foreground">Updated:</span>{" "}
                           {formatDate(project.updatedAt)}
                         </div>
                       </div>
+
+                      {/* Full description rendered as markdown */}
+                      {project.description && (
+                        <div className="w-full border-t border-border/50 pt-4">
+                          <div className="prose prose-sm dark:prose-invert max-w-none [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_h4]:text-sm [&_p]:my-1.5 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_hr]:my-3">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {project.description}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
                     </CardFooter>
                   )}
                 </Card>

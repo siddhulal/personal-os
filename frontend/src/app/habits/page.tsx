@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAiChat, type PageAiAction } from "@/lib/ai-chat-context";
 import { toast } from "sonner";
@@ -85,16 +85,10 @@ export default function HabitsPage() {
 
   // ── AI floating button actions ──────────────────────────────────────────────
   const { setPageActions, clearPageActions, openChat } = useAiChat();
+  const habitsRef = useRef(allHabits);
+  habitsRef.current = allHabits;
 
-  const registerAiActions = useCallback(() => {
-    const habitSummary = allHabits
-      .slice(0, 15)
-      .map(
-        (h) =>
-          `- ${h.name} (streak: ${h.currentStreak} days, ${h.completedToday ? "done today" : "not done today"})`
-      )
-      .join("\n");
-
+  useEffect(() => {
     const actions: PageAiAction[] = [
       {
         label: "Suggest Habits for Goal",
@@ -111,6 +105,13 @@ export default function HabitsPage() {
         action: "optimize_habit_stack",
         icon: Lightbulb,
         onAction: () => {
+          const habitSummary = habitsRef.current
+            .slice(0, 15)
+            .map(
+              (h) =>
+                `- ${h.name} (streak: ${h.currentStreak} days, ${h.completedToday ? "done today" : "not done today"})`
+            )
+            .join("\n");
           openChat(
             `Analyze my current habits and suggest improvements:\n\n${habitSummary || "No habits found."}\n\nPlease suggest ways to optimize my habit stack: better ordering, habit stacking opportunities, or habits to add/remove.`
           );
@@ -118,12 +119,9 @@ export default function HabitsPage() {
       },
     ];
     setPageActions(actions);
-  }, [allHabits, setPageActions, openChat]);
-
-  useEffect(() => {
-    registerAiActions();
     return () => clearPageActions();
-  }, [registerAiActions, clearPageActions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleFormSubmit(data: HabitFormData) {
     if (editingHabit) {

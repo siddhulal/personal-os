@@ -49,9 +49,12 @@ import {
   ListPlus,
   BookOpen,
   X,
+  Trash2,
 } from "lucide-react";
 import { generateInterviewAnswer, generateInterviewQuestions, improveAnswer as improveAnswerApi } from "@/lib/api/ai";
 import { AiResultDialog } from "@/components/ai/AiResultDialog";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -275,6 +278,29 @@ function QuestionBankTab({
     onError: () => {
       toast.error("Failed to update answer");
     },
+  });
+
+  const deleteQuestionMutation = useMutation({
+    mutationFn: async (questionId: string) => {
+      await api.delete(`/api/interview/questions/${questionId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["interview-questions"] });
+      toast.success("Question deleted");
+      setExpandedId(null);
+    },
+    onError: () => toast.error("Failed to delete question"),
+  });
+
+  const deleteAnswerMutation = useMutation({
+    mutationFn: async (data: { questionId: string; answerId: string }) => {
+      await api.delete(`/api/interview/questions/${data.questionId}/answers/${data.answerId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["interview-questions"] });
+      toast.success("Answer deleted");
+    },
+    onError: () => toast.error("Failed to delete answer"),
   });
 
   const practiceMutation = useMutation({
@@ -662,6 +688,21 @@ function QuestionBankTab({
                         <Play className="h-3 w-3 mr-1" />
                         Practice
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete "${question.questionText.slice(0, 60)}..."?`)) {
+                            deleteQuestionMutation.mutate(question.id);
+                          }
+                        }}
+                        disabled={deleteQuestionMutation.isPending}
+                        title="Delete question"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                       {isExpanded ? (
                         <ChevronUp className="h-5 w-5 text-muted-foreground" />
                       ) : (
@@ -730,11 +771,27 @@ function QuestionBankTab({
                                         </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => {
+                                        if (confirm("Delete this answer?")) {
+                                          deleteAnswerMutation.mutate({ questionId: question.id, answerId: answer.id });
+                                        }
+                                      }}
+                                      disabled={deleteAnswerMutation.isPending}
+                                      title="Delete answer"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
                                   </div>
                                 </div>
-                                <p className="text-sm whitespace-pre-wrap">
-                                  {answer.answerText}
-                                </p>
+                                <div className="prose prose-sm dark:prose-invert max-w-none [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:rounded-lg [&_code]:text-xs [&_strong]:font-bold [&_strong]:text-foreground [&_h3]:text-lg [&_h3]:font-semibold [&_h4]:text-base [&_h4]:font-semibold [&_h3]:mt-6 [&_h3]:mb-3 [&_h4]:mt-4 [&_h4]:mb-2 [&_hr]:my-4 [&_blockquote]:border-l-primary/50 [&_blockquote]:text-muted-foreground">
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {answer.answerText}
+                                  </ReactMarkdown>
+                                </div>
                                 <p className="text-xs text-muted-foreground">
                                   Added{" "}
                                   {new Date(

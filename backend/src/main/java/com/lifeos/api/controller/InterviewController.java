@@ -60,6 +60,12 @@ public class InterviewController {
         return ResponseEntity.ok(interviewService.updateAnswer(questionId, id, request));
     }
 
+    @DeleteMapping("/questions/{questionId}/answers/{id}")
+    public ResponseEntity<Void> deleteAnswer(@PathVariable UUID questionId, @PathVariable UUID id) {
+        interviewService.deleteAnswer(questionId, id);
+        return ResponseEntity.noContent().build();
+    }
+
     // Practice
     @PostMapping("/questions/{questionId}/practice")
     public ResponseEntity<PracticeRecordResponse> recordPractice(

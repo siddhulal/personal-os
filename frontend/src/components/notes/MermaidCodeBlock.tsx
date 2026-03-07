@@ -4,7 +4,7 @@ import { NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer } from "@tiptap
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Eye, Code, ZoomIn, ZoomOut, RotateCcw, Download, Maximize2, Minimize2, Move } from "lucide-react";
-import { sanitizeMermaid } from "@/lib/mermaid-utils";
+import { sanitizeMermaidAttempts } from "@/lib/mermaid-utils";
 
 function MermaidPreview({ code, fullscreen, onToggleFullscreen }: {
   code: string;
@@ -34,14 +34,36 @@ function MermaidPreview({ code, fullscreen, onToggleFullscreen }: {
           securityLevel: "loose",
           flowchart: { useMaxWidth: true },
         });
-        const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const cleaned = sanitizeMermaid(code);
-        // Clean up any orphaned mermaid error elements from previous failed renders
-        document.querySelectorAll(`#d${id}`).forEach((el) => el.remove());
-        const { svg: rendered } = await mermaid.render(id, cleaned);
-        if (!cancelled) {
-          setSvg(rendered);
-          setError("");
+        // Try original first, then progressively sanitized versions
+        const sanitized = sanitizeMermaidAttempts(code);
+        const attempts = [code, ...sanitized];
+        const seen = new Set<string>();
+        const unique = attempts.filter((c) => {
+          const key = c.trim();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        for (let i = 0; i < unique.length; i++) {
+          try {
+            const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            document.querySelectorAll(`#d${id}`).forEach((el) => el.remove());
+            const { svg: rendered } = await mermaid.render(id, unique[i]);
+            if (!cancelled) {
+              setSvg(rendered);
+              setError("");
+            }
+            return;
+          } catch (err: any) {
+            if (i === unique.length - 1) {
+              if (!cancelled) {
+                const msg = err?.message || err?.str || String(err);
+                setError(msg.length > 200 ? msg.slice(0, 200) + "..." : msg);
+                console.error("Mermaid render error:", err);
+              }
+            }
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
