@@ -38,6 +38,7 @@ public class AiGenerateService {
     private final GoalRepository goalRepository;
     private final HabitCompletionRepository habitCompletionRepository;
     private final PomodoroSessionRepository pomodoroSessionRepository;
+    private final BookRepository bookRepository;
 
     public AiGenerateResponse generateExamples(UUID topicId) {
         User user = getCurrentUser();
@@ -446,6 +447,85 @@ public class AiGenerateService {
         return AiGenerateResponse.builder()
                 .content(response)
                 .type("goal_tasks")
+                .build();
+    }
+
+    // ==================== BOOK AI ACTIONS ====================
+
+    public AiGenerateResponse bookAiAction(UUID bookId, com.lifeos.api.dto.BookAiRequest request) {
+        User user = getCurrentUser();
+        Book book = bookRepository.findById(bookId)
+                .orElseThrow(() -> new ResourceNotFoundException("Book", "id", bookId));
+
+        String bookContext = String.format("Book: \"%s\" by %s (Page %d)",
+                book.getTitle(),
+                book.getAuthor() != null ? book.getAuthor() : "Unknown",
+                request.getPageNumber());
+
+        String selectedText = request.getSelectedText();
+        String actionType = request.getActionType().toUpperCase();
+
+        String prompt = switch (actionType) {
+            case "EXPLAIN" -> String.format(
+                    "You are a technical tutor. The user is reading %s.\n" +
+                    "They selected this text and want it explained:\n\n\"%s\"\n\n" +
+                    "Explain this concept clearly with:\n" +
+                    "1. A simple explanation\n" +
+                    "2. A real-world analogy\n" +
+                    "3. Why it matters in practice\n\n" +
+                    "Use markdown formatting.",
+                    bookContext, selectedText);
+
+            case "CODE" -> String.format(
+                    "You are a coding tutor. The user is reading %s.\n" +
+                    "They selected this text and want a code example:\n\n\"%s\"\n\n" +
+                    "Generate a clear, working code example that demonstrates this concept.\n" +
+                    "Include comments explaining each part.%s\n" +
+                    "Use markdown formatting with proper code blocks.",
+                    bookContext, selectedText,
+                    request.getLanguage() != null ? " Use " + request.getLanguage() + "." : " Infer the language from context.");
+
+            case "DIAGRAM" -> String.format(
+                    "You are a technical illustrator. The user is reading %s.\n" +
+                    "They selected this text and want a visual diagram:\n\n\"%s\"\n\n" +
+                    "Generate a Mermaid diagram that visualizes this concept. Choose the most appropriate type " +
+                    "(flowchart, sequence, class, ER, state, etc.).\n\n" +
+                    "STRICT Mermaid syntax rules:\n" +
+                    "- Node labels: use square brackets only: A[Label Text]\n" +
+                    "- If a label has special characters wrap in quotes: A[\"Label (Text)\"]\n" +
+                    "- Edges: use --> for solid arrows, -.-> for dotted arrows\n" +
+                    "- Keep node IDs short and alphanumeric\n" +
+                    "- Do NOT use semicolons at end of lines\n\n" +
+                    "Return ONLY the Mermaid code block wrapped in ```mermaid.",
+                    bookContext, selectedText);
+
+            case "INTERVIEW" -> String.format(
+                    "You are a senior technical interviewer. The user is reading %s.\n" +
+                    "They selected this text and want interview questions generated:\n\n\"%s\"\n\n" +
+                    "Generate 3-5 interview questions about this topic.\n\n" +
+                    "IMPORTANT: Return ONLY a valid JSON array. No markdown, no explanation, no code blocks.\n" +
+                    "Each object must have these exact fields:\n" +
+                    "- \"question\": the interview question text\n" +
+                    "- \"difficulty\": one of EASY, MEDIUM, HARD\n" +
+                    "- \"category\": a relevant category (e.g., DATABASE, SYSTEM_DESIGN, JAVA, etc.)\n\n" +
+                    "Return ONLY the JSON array, nothing else.",
+                    bookContext, selectedText);
+
+            case "ASK" -> String.format(
+                    "You are a knowledgeable tutor. The user is reading %s.\n\n" +
+                    "Context from the book:\n\"%s\"\n\n" +
+                    "User's question: %s\n\n" +
+                    "Answer clearly with examples, code, or diagrams as appropriate. Use markdown formatting.",
+                    bookContext, selectedText,
+                    request.getQuestion() != null ? request.getQuestion() : "Please explain this in more detail.");
+
+            default -> String.format("Explain the following text from %s:\n\n\"%s\"", bookContext, selectedText);
+        };
+
+        String response = callProvider(user, prompt);
+        return AiGenerateResponse.builder()
+                .content(response)
+                .type("book_" + actionType.toLowerCase())
                 .build();
     }
 

@@ -640,6 +640,65 @@ export interface CrossModuleLink {
 }
 
 // ============================================================
+// Books
+// ============================================================
+
+export type BookStatus = "UNREAD" | "READING" | "COMPLETED" | "ON_HOLD";
+export type BookFileType = "PDF" | "EPUB";
+export type BookAiActionType = "EXPLAIN" | "CODE" | "DIAGRAM" | "INTERVIEW" | "ASK";
+
+export interface Book {
+  id: string;
+  title: string;
+  author: string | null;
+  description: string | null;
+  coverImageUrl: string | null;
+  fileUrl: string;
+  fileType: BookFileType;
+  fileSize: number;
+  totalPages: number;
+  currentPage: number;
+  status: BookStatus;
+  category: string;
+  rating: number | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  tags: Tag[];
+  highlightCount: number;
+  bookmarkCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BookHighlight {
+  id: string;
+  bookId: string;
+  pageNumber: number;
+  selectedText: string;
+  aiResponse: string | null;
+  aiActionType: string | null;
+  color: string;
+  note: string | null;
+  linkedNoteId: string | null;
+  createdAt: string;
+}
+
+export interface BookBookmark {
+  id: string;
+  bookId: string;
+  pageNumber: number;
+  label: string | null;
+  createdAt: string;
+}
+
+export interface BookStats {
+  totalBooks: number;
+  reading: number;
+  completed: number;
+  pagesRead: number;
+}
+
+// ============================================================
 // Analytics
 // ============================================================
 

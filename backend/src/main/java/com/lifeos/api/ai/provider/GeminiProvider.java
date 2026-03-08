@@ -222,7 +222,16 @@ public class GeminiProvider implements AiProvider {
         }
         body.put("safetySettings", safetySettings);
 
-        body.put("generationConfig", Map.of("temperature", request.getTemperature()));
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("temperature", request.getTemperature());
+
+        // For thinking models (2.5+), set a low thinking budget for fast responses
+        String modelName = request.getModel() != null ? request.getModel() : defaultModel;
+        if (modelName.contains("2.5")) {
+            generationConfig.put("thinkingConfig", Map.of("thinkingBudget", 1024));
+        }
+
+        body.put("generationConfig", generationConfig);
 
         return body;
     }

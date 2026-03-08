@@ -29,6 +29,7 @@ import {
   Timer,
   BarChart3,
   Brush,
+  BookOpen,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ const navigation = [
   { name: "Goals", href: "/goals", icon: Target },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Learning", href: "/learning", icon: GraduationCap },
+  { name: "Books", href: "/books", icon: BookOpen },
   { name: "Interview Prep", href: "/interview", icon: MessageSquare },
 ];
 
